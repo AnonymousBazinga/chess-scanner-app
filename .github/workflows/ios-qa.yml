@@ -29,9 +29,13 @@ jobs:
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Reference predictions for fixtures
         run: |
-          python3 -m venv .venv
+          python -m venv .venv
           .venv/bin/pip install --quiet coremltools pillow numpy
           .venv/bin/python qa/reference_predict.py
 
