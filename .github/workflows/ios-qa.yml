@@ -78,7 +78,20 @@ jobs:
           cp build/xcodebuild.log build/qa/ 2>/dev/null || true
           cp ChessScannerUITests/Fixtures/expected.json build/qa/ 2>/dev/null || true
           cp ChessScanner.xcodeproj/project.pbxproj build/qa/generated.project.pbxproj
-          ls -la build/qa
+
+      - name: Print results to log
+        if: always()
+        run: |
+          # The artifact can't always be downloaded by the agent reviewing
+          # results, so surface everything important in the log too.
+          echo "::group::Crash reports"
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+            echo "=== $f"; head -c 12000 "$f"; echo
+          done
+          echo "::endgroup::"
+          echo "::group::Test failures and text attachments"
+          python3 qa/print_results.py build/qa
+          echo "::endgroup::"
 
       - uses: actions/upload-artifact@v4
         if: always()
