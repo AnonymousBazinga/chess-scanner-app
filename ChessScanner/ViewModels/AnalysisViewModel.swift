@@ -25,7 +25,7 @@ class AnalysisViewModel: ObservableObject {
         }
     }
 
-    let engine = ChessEngine(multiPV: 3)
+    let engine = ChessEngine.shared
     let initialFEN: String
     let startPosition: Position
 
@@ -204,17 +204,16 @@ class AnalysisViewModel: ObservableObject {
 
     func startEngine() {
         guard engineEnabled else { return }
-        engine.startAnalysis(position: currentPosition)
+        engine.startAnalysis(position: currentPosition, owner: self)
     }
 
     func stopEngine() {
-        engine.stopAnalysis()
+        engine.stopAnalysis(owner: self)
     }
 
-    func shutdownEngine() {
-        Task {
-            await engine.shutdown()
-        }
+    /// Pauses the shared engine when the screen goes away (it is never shut down).
+    func pauseEngine() {
+        engine.stopAnalysis(owner: self)
     }
 
     func restartEngine() {

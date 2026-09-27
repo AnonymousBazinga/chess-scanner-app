@@ -59,7 +59,12 @@ class ChessEngine: ObservableObject {
     private var currentPosition: Position?
     private var pendingLines: [Int: EngineLine] = [:]
 
-    init(multiPV: Int = 3) {
+    /// ChessKitEngine redirects the process's stdin/stdout to talk to Stockfish,
+    /// so only one engine may exist, and it must never be stopped: after `stop()`
+    /// closes the pipes, any later stdout write raises SIGPIPE and kills the app.
+    static let shared = ChessEngine(multiPV: 3)
+
+    private init(multiPV: Int = 3) {
         self.multiPV = multiPV
     }
 
@@ -117,51 +122,60 @@ class ChessEngine: ObservableObject {
         _ = await readyEngine()
     }
 
-    func shutdown() async {
-        responseTask?.cancel()
-        responseTask = nil
-        setupTask = nil
-        await engine?.stop()
-        engine = nil
-        engineReady = false
-    }
-
     // MARK: - Analysis Control
 
-    func startAnalysis(position: Position) {
+    /// True from `go` until Stockfish reports `bestmove`, even after `stop` is sent.
+    private var searchInFlight = false
+    /// Output still arriving from a superseded search is dropped until its `bestmove`.
+    private var discardUntilBestmove = false
+    /// Commands are chained so rapid moves can't interleave stop/position/go.
+    private var commandChain: Task<Void, Never>?
+    /// The screen that started the current search; only it may pause it.
+    private var owner: ObjectIdentifier?
+
+    func startAnalysis(position: Position, owner: AnyObject? = nil) {
+        self.owner = owner.map(ObjectIdentifier.init)
         currentPosition = position
         pendingLines = [:]
         lines = []
         currentDepth = 0
         nodesSearched = 0
         nps = 0
+        isAnalyzing = true
 
-        Task {
-            guard let engine = await readyEngine() else { return }
-
-            // The stopped search still reports its final info and bestmove;
-            // drop those so they don't mix into the new position's lines.
-            discardUntilBestmove = isAnalyzing
-            await engine.send(command: .stop)
-            await engine.send(command: .position(.fen(position.fen)))
+        let fen = position.fen
+        let previous = commandChain
+        commandChain = Task {
+            await previous?.value
+            guard let engine = await readyEngine() else {
+                isAnalyzing = false
+                return
+            }
+            if searchInFlight {
+                discardUntilBestmove = true
+                await engine.send(command: .stop)
+            }
+            await engine.send(command: .position(.fen(fen)))
             await engine.send(command: .go(infinite: true))
-            isAnalyzing = true
+            searchInFlight = true
         }
     }
 
-    func stopAnalysis() {
-        Task {
-            guard let engine = engine else { return }
+    func stopAnalysis(owner: AnyObject? = nil) {
+        if let owner, self.owner != ObjectIdentifier(owner) { return }
+        isAnalyzing = false
+        let previous = commandChain
+        commandChain = Task {
+            await previous?.value
+            guard let engine, searchInFlight else { return }
             await engine.send(command: .stop)
-            isAnalyzing = false
         }
     }
 
     // MARK: - Response Handling
 
-    private var discardUntilBestmove = false
-
     private func handleResponse(_ response: EngineResponse) {
+        if case .bestmove = response { searchInFlight = false }
         if discardUntilBestmove {
             if case .bestmove = response { discardUntilBestmove = false }
             return

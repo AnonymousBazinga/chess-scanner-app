@@ -5,6 +5,8 @@ struct ChessScannerApp: App {
     @State private var splashFinished = UITestHooks.isUITest
 
     init() {
+        // Stockfish shares this process's stdout; never let a broken pipe kill the app.
+        signal(SIGPIPE, SIG_IGN)
         if UITestHooks.isUITest {
             UITestHooks.prepareForUITest()
         }

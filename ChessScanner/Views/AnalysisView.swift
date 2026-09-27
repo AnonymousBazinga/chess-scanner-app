@@ -73,7 +73,7 @@ struct AnalysisView: View {
         }
         .animation(Motion.snappy, value: copiedFEN)
         .onAppear { viewModel.startEngine() }
-        .onDisappear { viewModel.shutdownEngine() }
+        .onDisappear { viewModel.pauseEngine() }
     }
 
     private var lichessURL: URL {

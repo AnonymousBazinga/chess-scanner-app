@@ -36,7 +36,6 @@ struct BoardEditView: View {
                 board
                 palette
                 settings
-                actions
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
@@ -51,17 +50,33 @@ struct BoardEditView: View {
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
-            if photo != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showPhoto = true
-                    } label: {
-                        Image(systemName: "photo")
-                            .foregroundStyle(Theme.textPrimary)
-                    }
-                    .accessibilityLabel("Compare with photo")
-                    .accessibilityIdentifier("editor.photo")
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button(action: undo) {
+                    Image(systemName: "arrow.uturn.backward")
                 }
+                .disabled(undoStack.isEmpty)
+                .accessibilityLabel("Undo")
+                .accessibilityIdentifier("editor.undo")
+
+                Menu {
+                    Button {
+                        withAnimation(Motion.smooth) { flipped.toggle() }
+                    } label: {
+                        Label("Flip board", systemImage: "arrow.up.arrow.down")
+                    }
+                    Button(action: resetToStart) {
+                        Label("Starting position", systemImage: "arrow.counterclockwise")
+                    }
+                    Button(role: .destructive) {
+                        edit { position.clearBoard() }
+                    } label: {
+                        Label("Clear board", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("More")
+                .accessibilityIdentifier("editor.menu")
             }
         }
         .navigationDestination(isPresented: $navigateToAnalysis) {
@@ -269,46 +284,17 @@ struct BoardEditView: View {
 
     // MARK: - Actions
 
-    private var actions: some View {
-        HStack(spacing: 8) {
-            actionButton("Undo", icon: "arrow.uturn.backward", id: "editor.undo", enabled: !undoStack.isEmpty) {
-                guard let last = undoStack.popLast() else { return }
-                position.objectWillChange.send()
-                position.loadFEN(last)
-            }
-            actionButton("Flip", icon: "arrow.up.arrow.down", id: "editor.flip") {
-                withAnimation(Motion.smooth) { flipped.toggle() }
-            }
-            actionButton("Start", icon: "arrow.counterclockwise", id: "editor.reset") {
-                edit { position.loadFEN(Position.startFEN) }
-                sideToMove = .white
-                castling = position.castlingRights
-            }
-            actionButton("Clear", icon: "trash", id: "editor.clear", tint: Theme.danger) {
-                edit { position.clearBoard() }
-            }
-        }
+    private func undo() {
+        guard let last = undoStack.popLast() else { return }
+        Haptics.tap()
+        position.objectWillChange.send()
+        position.loadFEN(last)
     }
 
-    private func actionButton(_ title: String, icon: String, id: String, enabled: Bool = true,
-                              tint: Color = Theme.textPrimary, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 14, weight: .semibold))
-                Text(title).font(.footnote.weight(.semibold))
-            }
-            .foregroundStyle(tint)
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(PressableStyle())
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.4)
-        .accessibilityIdentifier(id)
+    private func resetToStart() {
+        edit { position.loadFEN(Position.startFEN) }
+        sideToMove = .white
+        castling = position.castlingRights
     }
 
     // MARK: - Analyze
@@ -327,10 +313,27 @@ struct BoardEditView: View {
                     .frame(height: 33)
                     .transition(.opacity)
             }
-            PrimaryButton(title: "Analyze", icon: "bolt.fill", enabled: issues.isEmpty) {
-                analyze()
+            HStack(spacing: 10) {
+                if let photo {
+                    Button {
+                        showPhoto = true
+                    } label: {
+                        Image(uiImage: photo)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 54, height: 54)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.stroke))
+                    }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityLabel("Compare with photo")
+                    .accessibilityIdentifier("editor.photo")
+                }
+                PrimaryButton(title: "Analyze", icon: "bolt.fill", enabled: issues.isEmpty) {
+                    analyze()
+                }
+                .accessibilityIdentifier("editor.analyze")
             }
-            .accessibilityIdentifier("editor.analyze")
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)

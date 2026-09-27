@@ -105,12 +105,12 @@ final class ChessScannerUITests: XCTestCase {
         screenshot("12-editor-palette")
 
         // Validation: clearing the board blocks analysis until kings are placed.
-        app.buttons["editor.clear"].tap()
+        editorMenu("Clear board")
         XCTAssertTrue(element("editor.issue").waitForExistence(timeout: 3), "No validation message on empty board")
         XCTAssertFalse(app.buttons["editor.analyze"].isEnabled)
         screenshot("13-editor-invalid")
 
-        app.buttons["editor.reset"].tap()
+        editorMenu("Starting position")
         XCTAssertTrue(waitUntil(timeout: 3) { !self.element("editor.issue").exists })
         XCTAssertTrue(app.buttons["editor.analyze"].isEnabled)
 
@@ -162,7 +162,7 @@ final class ChessScannerUITests: XCTestCase {
         app.buttons["scan.manual"].tap()
         XCTAssertTrue(app.navigationBars["Review Position"].waitForExistence(timeout: 10))
 
-        app.buttons["editor.clear"].tap()
+        editorMenu("Clear board")
         app.buttons["palette.wK"].tap(); square("e1").tap()
         app.buttons["palette.bK"].tap(); square("h8").tap()
         app.buttons["palette.wP"].tap(); square("a7").tap()
@@ -214,6 +214,13 @@ final class ChessScannerUITests: XCTestCase {
         app.launch()
     }
 
+    private func editorMenu(_ item: String) {
+        app.buttons["editor.menu"].tap()
+        let button = app.buttons[item]
+        XCTAssertTrue(button.waitForExistence(timeout: 3), "Menu item \(item) missing")
+        button.tap()
+    }
+
     private func element(_ id: String) -> XCUIElement {
         app.descendants(matching: .any)[id].firstMatch
     }
@@ -261,7 +268,7 @@ final class ChessScannerUITests: XCTestCase {
         }
         if element("editor.issue").exists {
             attachText("unfixable-scan", element("editor.issue").label)
-            app.buttons["editor.reset"].tap()
+            editorMenu("Starting position")
         }
     }
 
