@@ -16,12 +16,14 @@ struct ChessScannerApp: App {
                 NavigationStack {
                     CameraLandingView()
                 }
+                .tint(Theme.accent)
 
                 if !splashFinished {
                     SplashView(isFinished: $splashFinished)
                         .zIndex(1)
                 }
             }
+            .preferredColorScheme(.dark)
         }
     }
 }

@@ -3,55 +3,37 @@ import SwiftUI
 struct SplashView: View {
     @Binding var isFinished: Bool
 
-    @State private var kingOpacity: Double = 0
-    @State private var kingScale: CGFloat = 0.8
-    @State private var doorOpen: CGFloat = 0
+    @State private var appear = false
+    @State private var leave = false
 
     var body: some View {
-        GeometryReader { geo in
-            let halfWidth = geo.size.width / 2
-
-            ZStack {
-                // Left half — white
-                Rectangle()
-                    .fill(Color.white)
-                    .frame(width: halfWidth)
-                    .offset(x: -halfWidth / 2 - doorOpen)
-
-                // Right half — dark
-                Rectangle()
-                    .fill(Color(white: 0.08))
-                    .frame(width: halfWidth)
-                    .offset(x: halfWidth / 2 + doorOpen)
-
-                // King icon at the seam
-                Text("\u{265A}")
-                    .font(.system(size: 56, weight: .thin))
-                    .foregroundStyle(NotionTheme.accent)
-                    .opacity(kingOpacity)
-                    .scaleEffect(kingScale)
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image("piece-wN")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 84, height: 84)
+                    .padding(22)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(Theme.accent.opacity(appear ? 0.8 : 0), lineWidth: 2))
+                    .scaleEffect(appear ? 1 : 0.8)
+                Text("Chess Scanner")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .opacity(appear ? 1 : 0)
+                    .offset(y: appear ? 0 : 8)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scaleEffect(leave ? 1.08 : 1)
         }
-        .ignoresSafeArea()
-        .onAppear {
-            // Phase 1: King fades in with scale
-            withAnimation(.easeOut(duration: 0.4)) {
-                kingOpacity = 1
-                kingScale = 1.0
-            }
-
-            // Phase 2: Hold, then doors slide open
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation(.easeInOut(duration: 0.7)) {
-                    doorOpen = UIScreen.main.bounds.width
-                    kingOpacity = 0
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                    isFinished = true
-                }
-            }
+        .opacity(leave ? 0 : 1)
+        .task {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) { appear = true }
+            try? await Task.sleep(for: .milliseconds(900))
+            withAnimation(.easeIn(duration: 0.3)) { leave = true }
+            try? await Task.sleep(for: .milliseconds(300))
+            isFinished = true
         }
     }
 }

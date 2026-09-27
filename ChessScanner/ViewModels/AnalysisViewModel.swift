@@ -16,18 +16,26 @@ class AnalysisViewModel: ObservableObject {
     @Published var flipped: Bool = false
     @Published var moveHistory: [MoveHistoryEntry] = []
     @Published var currentMoveIndex: Int = -1
+    /// A pawn move waiting for the user to choose the promotion piece.
+    @Published var pendingPromotion: (from: Square, to: Square)?
+    @Published var engineEnabled = true {
+        didSet {
+            guard engineEnabled != oldValue else { return }
+            engineEnabled ? startEngine() : stopEngine()
+        }
+    }
 
     let engine = ChessEngine(multiPV: 3)
     let initialFEN: String
+    let startPosition: Position
 
     private var lastMove: Move?
-    private var positionStack: [String] = []
     private var engineCancellable: AnyCancellable?
 
     init(fen: String) {
         self.initialFEN = fen
         self.currentPosition = Position(fen: fen)
-        self.positionStack = [fen]
+        self.startPosition = Position(fen: fen)
 
         // Forward engine's objectWillChange to our own so views observe engine state
         engineCancellable = engine.objectWillChange.sink { [weak self] _ in
@@ -37,49 +45,87 @@ class AnalysisViewModel: ObservableObject {
 
     // MARK: - Current State
 
-    var currentFEN: String {
-        currentPosition.fen
-    }
-
-    var evalScore: Double {
-        if let first = engine.lines.first {
-            return first.scoreForBar
-        }
-        return 0.0
-    }
+    var currentFEN: String { currentPosition.fen }
 
     var lastMoveSquares: (from: Square, to: Square)? {
         guard let last = lastMove else { return nil }
         return (last.from, last.to)
     }
 
+    var topLine: EngineLine? { engineEnabled ? engine.lines.first : nil }
+
+    /// Arrow for the engine's best move, as Chess.com and Lichess show.
+    var bestMoveArrows: [BoardArrow] {
+        guard engineEnabled, let uci = engine.lines.first?.pv.first, uci.count >= 4,
+              let from = Square.fromAlgebraic(String(uci.prefix(2))),
+              let to = Square.fromAlgebraic(String(uci.dropFirst(2).prefix(2))) else { return [] }
+        return [BoardArrow(from: from, to: to)]
+    }
+
+    var statusText: String? {
+        if currentPosition.isCheckmate {
+            return "Checkmate · \(currentPosition.sideToMove.opposite.name) wins"
+        }
+        if currentPosition.isStalemate { return "Stalemate" }
+        return nil
+    }
+
+    var canGoBack: Bool { currentMoveIndex >= 0 }
+    var canGoForward: Bool { currentMoveIndex < moveHistory.count - 1 }
+
     // MARK: - Square Interaction
 
     func handleSquareTap(_ square: Square) {
         if let selected = selectedSquare {
-            // Try to make a move
-            let moves = currentPosition.legalMoves(from: selected)
-            if let move = moves.first(where: { $0.to == square }) {
-                makeMove(move)
-                selectedSquare = nil
-                legalMoveSquares = []
-                return
-            }
-
-            // Deselect or select new piece
             if square == selected {
-                selectedSquare = nil
-                legalMoveSquares = []
+                clearSelection()
                 return
             }
+            if tryMove(from: selected, to: square) { return }
         }
 
-        // Select a piece
-        if let piece = currentPosition.piece(at: square),
-           piece.color == currentPosition.sideToMove {
-            selectedSquare = square
-            legalMoveSquares = currentPosition.legalMoves(from: square).map { $0.to }
+        if let piece = currentPosition.piece(at: square), piece.color == currentPosition.sideToMove {
+            Haptics.tap()
+            withAnimation(Motion.snappy) {
+                selectedSquare = square
+                legalMoveSquares = currentPosition.legalMoves(from: square).map(\.to)
+            }
         } else {
+            clearSelection()
+        }
+    }
+
+    func canDrag(from square: Square) -> Bool {
+        currentPosition.piece(at: square)?.color == currentPosition.sideToMove
+    }
+
+    /// Plays `from`→`to` if legal. Promotions wait for the piece choice.
+    @discardableResult
+    func tryMove(from: Square, to: Square?) -> Bool {
+        guard let to else { clearSelection(); return false }
+        let candidates = currentPosition.legalMoves(from: from).filter { $0.to == to }
+        guard let move = candidates.first else { return false }
+
+        if candidates.count > 1 {
+            clearSelection()
+            withAnimation(Motion.snappy) { pendingPromotion = (from, to) }
+            return false
+        }
+        makeMove(move)
+        return true
+    }
+
+    func completePromotion(_ type: PieceType?) {
+        defer { withAnimation(Motion.snappy) { pendingPromotion = nil } }
+        guard let pending = pendingPromotion, let type else { return }
+        if let move = currentPosition.legalMoves(from: pending.from)
+            .first(where: { $0.to == pending.to && $0.promotion == type }) {
+            makeMove(move)
+        }
+    }
+
+    private func clearSelection() {
+        withAnimation(Motion.snappy) {
             selectedSquare = nil
             legalMoveSquares = []
         }
@@ -97,41 +143,50 @@ class AnalysisViewModel: ObservableObject {
         }
 
         let newPosition = currentPosition.makeMove(move)
-        let fenAfter = newPosition.fen
-
-        let entry = MoveHistoryEntry(
-            move: move,
-            san: san,
-            fenBefore: fenBefore,
-            fenAfter: fenAfter
-        )
-
-        moveHistory.append(entry)
+        moveHistory.append(MoveHistoryEntry(move: move, san: san, fenBefore: fenBefore, fenAfter: newPosition.fen))
         currentMoveIndex = moveHistory.count - 1
         lastMove = move
-
         currentPosition = newPosition
-        positionStack.append(fenAfter)
-
+        selectedSquare = nil
+        legalMoveSquares = []
+        Haptics.move()
         restartEngine()
     }
 
     // MARK: - Navigation
 
     func goToStart() {
-        currentMoveIndex = -1
-        currentPosition = Position(fen: initialFEN)
-        lastMove = nil
-        selectedSquare = nil
-        legalMoveSquares = []
-        restartEngine()
+        show(index: -1)
     }
 
     func goBack() {
-        guard currentMoveIndex >= 0 else { return }
-        currentMoveIndex -= 1
-        if currentMoveIndex >= 0 {
-            let entry = moveHistory[currentMoveIndex]
+        guard canGoBack else { return }
+        show(index: currentMoveIndex - 1)
+    }
+
+    func goForward() {
+        guard canGoForward else { return }
+        show(index: currentMoveIndex + 1)
+    }
+
+    func goToEnd() {
+        show(index: moveHistory.count - 1)
+    }
+
+    func goToMove(index: Int) {
+        guard index >= -1, index < moveHistory.count else { return }
+        show(index: index)
+    }
+
+    func undoMove() {
+        goBack()
+    }
+
+    private func show(index: Int) {
+        guard index != currentMoveIndex else { return }
+        currentMoveIndex = index
+        if index >= 0 {
+            let entry = moveHistory[index]
             currentPosition = Position(fen: entry.fenAfter)
             lastMove = entry.move
         } else {
@@ -140,49 +195,15 @@ class AnalysisViewModel: ObservableObject {
         }
         selectedSquare = nil
         legalMoveSquares = []
+        pendingPromotion = nil
+        Haptics.tap()
         restartEngine()
-    }
-
-    func goForward() {
-        guard currentMoveIndex < moveHistory.count - 1 else { return }
-        currentMoveIndex += 1
-        let entry = moveHistory[currentMoveIndex]
-        currentPosition = Position(fen: entry.fenAfter)
-        lastMove = entry.move
-        selectedSquare = nil
-        legalMoveSquares = []
-        restartEngine()
-    }
-
-    func goToEnd() {
-        guard !moveHistory.isEmpty else { return }
-        currentMoveIndex = moveHistory.count - 1
-        let entry = moveHistory[currentMoveIndex]
-        currentPosition = Position(fen: entry.fenAfter)
-        lastMove = entry.move
-        selectedSquare = nil
-        legalMoveSquares = []
-        restartEngine()
-    }
-
-    func goToMove(index: Int) {
-        guard index >= 0, index < moveHistory.count else { return }
-        currentMoveIndex = index
-        let entry = moveHistory[index]
-        currentPosition = Position(fen: entry.fenAfter)
-        lastMove = entry.move
-        selectedSquare = nil
-        legalMoveSquares = []
-        restartEngine()
-    }
-
-    func undoMove() {
-        goBack()
     }
 
     // MARK: - Engine Control
 
     func startEngine() {
+        guard engineEnabled else { return }
         engine.startAnalysis(position: currentPosition)
     }
 
@@ -197,13 +218,14 @@ class AnalysisViewModel: ObservableObject {
     }
 
     func restartEngine() {
-        engine.startAnalysis(position: currentPosition)
+        startEngine()
     }
 
     // MARK: - Board Controls
 
     func flipBoard() {
-        flipped.toggle()
+        Haptics.tap()
+        withAnimation(Motion.smooth) { flipped.toggle() }
     }
 
     func resetToStart() {
@@ -213,46 +235,35 @@ class AnalysisViewModel: ObservableObject {
         lastMove = nil
         selectedSquare = nil
         legalMoveSquares = []
-        positionStack = [initialFEN]
         restartEngine()
     }
 
     // MARK: - Play Engine Line
 
     func playLine(_ line: EngineLine) {
-        guard let firstUCI = line.pv.first else { return }
-
-        if let move = currentPosition.moveFromUCI(firstUCI) {
-            makeMove(move)
-        }
+        guard let firstUCI = line.pv.first,
+              let move = currentPosition.moveFromUCI(firstUCI) else { return }
+        makeMove(move)
     }
 
     // MARK: - Material
 
-    func capturedPieces(for color: PieceColor) -> [PieceType: Int] {
-        // Calculate what pieces are missing compared to starting material
-        let startPos = Position()
-        let startCounts = startPos.pieceCounts(for: color)
-        let currentCounts = currentPosition.pieceCounts(for: color)
-
-        var captured: [PieceType: Int] = [:]
-        for type in PieceType.allCases where type != .king {
-            let diff = (startCounts[type] ?? 0) - (currentCounts[type] ?? 0)
-            if diff > 0 {
-                captured[type] = diff
-            }
+    /// Pieces `color` has captured from the opponent, most valuable first.
+    func capturedPieces(by color: PieceColor) -> [PieceType] {
+        let start = Position().pieceCounts(for: color.opposite)
+        let current = currentPosition.pieceCounts(for: color.opposite)
+        var result: [PieceType] = []
+        for type in [PieceType.queen, .rook, .bishop, .knight, .pawn] {
+            let missing = (start[type] ?? 0) - (current[type] ?? 0)
+            if missing > 0 { result += Array(repeating: type, count: missing) }
         }
-        return captured
+        return result
     }
 
+    /// Material lead in pawns for `color`, or 0 if not ahead.
     func materialAdvantage(for color: PieceColor) -> Int {
-        let whiteMat = currentPosition.materialCount(for: .white) - 20000 // Remove king value
-        let blackMat = currentPosition.materialCount(for: .black) - 20000
-        let diff = whiteMat - blackMat
-        if color == .white {
-            return max(0, diff / 100)
-        } else {
-            return max(0, -diff / 100)
-        }
+        let diff = currentPosition.materialCount(for: .white) - currentPosition.materialCount(for: .black)
+        let pawns = diff / 100
+        return color == .white ? max(0, pawns) : max(0, -pawns)
     }
 }

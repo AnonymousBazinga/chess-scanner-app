@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryView: View {
     @ObservedObject var store: ScanHistoryStore
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmClear = false
 
     var onSelect: (String) -> Void
 
@@ -11,103 +12,104 @@ struct HistoryView: View {
             if store.items.isEmpty {
                 emptyState
             } else {
-                listContent
+                list
             }
         }
-        .background(NotionTheme.background)
+        .background(Theme.background.ignoresSafeArea())
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("Close") {
-                    dismiss()
-                }
-                .foregroundStyle(NotionTheme.textPrimary)
+                Button("Done") { dismiss() }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.textPrimary)
             }
-
             if !store.items.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Clear All", role: .destructive) {
-                        store.clearAll()
-                    }
-                    .foregroundStyle(NotionTheme.error)
-                    .font(.subheadline)
+                    Button("Clear") { confirmClear = true }
+                        .foregroundStyle(Theme.danger)
                 }
+            }
+        }
+        .confirmationDialog("Delete all saved positions?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("Delete All", role: .destructive) {
+                withAnimation(Motion.smooth) { store.clearAll() }
             }
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "clock")
-                .font(.system(size: 40))
-                .foregroundStyle(NotionTheme.textTertiary)
-            Text("No scans yet")
+        VStack(spacing: 14) {
+            Image(systemName: "square.grid.3x3.square")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(Theme.textTertiary)
+            Text("No positions yet")
                 .font(.headline)
-                .foregroundStyle(NotionTheme.textSecondary)
-            Text("Scanned positions will appear here")
+                .foregroundStyle(Theme.textPrimary)
+            Text("Positions you analyze are saved here.")
                 .font(.subheadline)
-                .foregroundStyle(NotionTheme.textTertiary)
-            Spacer()
+                .foregroundStyle(Theme.textSecondary)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var listContent: some View {
+    private var list: some View {
         List {
             ForEach(store.items) { item in
                 Button {
+                    Haptics.tap()
                     onSelect(item.fen)
                     dismiss()
                 } label: {
-                    historyRow(item)
+                    row(item)
                 }
+                .buttonStyle(PressableStyle(scale: 0.98))
                 .accessibilityIdentifier("history.row")
-                .listRowBackground(NotionTheme.background)
-                .listRowSeparatorTint(NotionTheme.divider)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
             }
             .onDelete { offsets in
-                for index in offsets {
-                    store.removeItem(store.items[index])
-                }
+                for index in offsets { store.removeItem(store.items[index]) }
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
     }
 
-    private func historyRow(_ item: ScanHistoryItem) -> some View {
-        HStack(spacing: 14) {
-            BoardView(
-                position: Position(fen: item.fen),
-                flipped: false,
-                interactive: false
-            )
-            .frame(width: 64, height: 64)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+    private func row(_ item: ScanHistoryItem) -> some View {
+        let position = Position(fen: item.fen)
+        return HStack(spacing: 14) {
+            BoardView(position: position, showCoordinates: false, interactive: false)
+                .frame(width: 72, height: 72)
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
-                if let label = item.label {
-                    Text(label)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(NotionTheme.textPrimary)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.label ?? "Scanned position")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(position.sideToMove == .white ? Theme.evalWhite : Theme.evalBlack)
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.3)))
+                        .frame(width: 9, height: 9)
+                    Text("\(position.sideToMove.name) to move")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                Text(item.fen.components(separatedBy: " ").first ?? item.fen)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(NotionTheme.textSecondary)
-                    .lineLimit(1)
-                Text(item.timestamp, style: .relative)
+                Text(item.timestamp, format: .relative(presentation: .named))
                     .font(.caption)
-                    .foregroundStyle(NotionTheme.textTertiary)
+                    .foregroundStyle(Theme.textTertiary)
             }
 
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(NotionTheme.textTertiary)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.textTertiary)
         }
-        .padding(.vertical, 4)
+        .padding(10)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(Rectangle())
     }
 }

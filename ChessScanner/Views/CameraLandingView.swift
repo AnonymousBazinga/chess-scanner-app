@@ -7,83 +7,68 @@ struct CameraLandingView: View {
 
     @State private var showHistory = false
     @State private var showPhotoLibrary = false
-    @State private var capturedImage: UIImage?
+    @State private var pickedImage: UIImage?
+    @State private var scanningImage: UIImage?
     @State private var isProcessing = false
     @State private var detectedFEN: String?
+    @State private var editorPhoto: UIImage?
     @State private var navigateToEditor = false
     @State private var navigateToAnalysis = false
     @State private var analysisStartFEN = Position.startFEN
-    @State private var shutterScale: CGFloat = 1.0
     @State private var toastMessage: String?
-    @State private var showToast = false
     @State private var pendingHistoryFEN: String?
     @State private var didRunUITestScan = false
+    @State private var flash = false
 
     var body: some View {
         ZStack {
-            // Camera preview
-            CameraPreview(camera: camera)
-                .ignoresSafeArea()
+            background
 
-            // Controls overlay
             VStack(spacing: 0) {
                 topBar
-                Spacer()
-                boardGuide
-                    .padding(.horizontal, 40)
-                Spacer()
-                captureSection
+                Spacer(minLength: 16)
+                viewfinder
+                    .padding(.horizontal, 28)
+                hint
+                    .padding(.top, 18)
+                Spacer(minLength: 16)
+                controls
             }
 
-            // Processing overlay
-            if isProcessing {
-                processingOverlay
+            if flash {
+                Color.white.ignoresSafeArea().transition(.opacity)
             }
 
-            // Toast banner
-            if showToast, let message = toastMessage {
+            if let message = toastMessage {
                 VStack {
-                    toastBanner(message)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 60)
+                    Pill(text: message, icon: "exclamationmark.triangle.fill")
+                        .background(Theme.surface, in: Capsule())
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("scan.toast")
+                        .padding(.top, 70)
                     Spacer()
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .onAppear {
-            if let path = UITestHooks.scanImagePath {
-                // UI tests inject a board photo instead of using the camera.
-                if !didRunUITestScan, let image = UIImage(contentsOfFile: path) {
-                    didRunUITestScan = true
-                    processImage(image, cropToGuide: false)
-                }
-            } else if !UITestHooks.isUITest {
-                camera.checkPermissions()
-            }
-        }
+        .animation(Motion.smooth, value: isProcessing)
+        .animation(Motion.snappy, value: toastMessage)
+        .onAppear(perform: onAppear)
         .onChange(of: recognitionService.isProcessing) { _, processing in
             guard !processing, isProcessing else { return }
-            isProcessing = false
-            if let fen = recognitionService.detectedFEN {
-                detectedFEN = fen
-                navigateToEditor = true
-            } else {
-                showToastMessage(recognitionService.error ?? "Could not detect board")
-            }
+            finishScan()
         }
         .sheet(isPresented: $showPhotoLibrary) {
-            PhotoPicker(image: $capturedImage)
+            PhotoPicker(image: $pickedImage).ignoresSafeArea()
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack {
-                HistoryView(store: historyStore) { fen in
-                    pendingHistoryFEN = fen
-                }
+                HistoryView(store: historyStore) { fen in pendingHistoryFEN = fen }
             }
+            .presentationDragIndicator(.visible)
         }
         .navigationDestination(isPresented: $navigateToEditor) {
-            BoardEditView(initialFEN: detectedFEN ?? Position.startFEN) { fen in
+            BoardEditView(initialFEN: detectedFEN ?? Position.startFEN, photo: editorPhoto) { fen in
                 historyStore.addItem(fen: fen)
                 analysisStartFEN = fen
                 navigateToAnalysis = true
@@ -92,11 +77,10 @@ struct CameraLandingView: View {
         .navigationDestination(isPresented: $navigateToAnalysis) {
             AnalysisView(fen: analysisStartFEN)
         }
-        .onChange(of: capturedImage) { _, image in
-            if let image {
-                capturedImage = nil
-                processImage(image, cropToGuide: false)
-            }
+        .onChange(of: pickedImage) { _, image in
+            guard let image else { return }
+            pickedImage = nil
+            processImage(image, cropToGuide: false)
         }
         .onChange(of: showHistory) { _, isShowing in
             if !isShowing, let fen = pendingHistoryFEN {
@@ -105,181 +89,272 @@ struct CameraLandingView: View {
                 navigateToAnalysis = true
             }
         }
-        .statusBarHidden()
+        .toolbar(.hidden, for: .navigationBar)
     }
 
-    // MARK: - Top Bar
+    // MARK: - Background
+
+    @ViewBuilder
+    private var background: some View {
+        if camera.isRunning {
+            CameraPreview(camera: camera)
+                .ignoresSafeArea()
+                .overlay(Color.black.opacity(0.25).ignoresSafeArea())
+        } else {
+            ZStack {
+                Theme.background
+                RadialGradient(colors: [Theme.accent.opacity(0.10), .clear],
+                               center: .center, startRadius: 10, endRadius: 420)
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    // MARK: - Top bar
 
     private var topBar: some View {
         HStack {
-            Button {
+            circleButton(icon: "clock.arrow.circlepath", label: "History", id: "scan.history") {
                 showHistory = true
-            } label: {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(.ultraThinMaterial, in: Circle())
             }
-            .accessibilityLabel("History")
-            .accessibilityIdentifier("scan.history")
+            Spacer()
+            Text("Chess Scanner")
+                .font(.headline)
+                .foregroundStyle(.white)
+            Spacer()
+            circleButton(icon: camera.isFlashOn ? "bolt.fill" : "bolt.slash.fill", label: "Flash", id: "scan.flash",
+                         tint: camera.isFlashOn ? Theme.warning : .white) {
+                camera.toggleFlash()
+            }
+            .opacity(camera.isRunning ? 1 : 0.35)
+            .disabled(!camera.isRunning)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    private func circleButton(icon: String, label: String, id: String, tint: Color = .white,
+                              action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+    }
+
+    // MARK: - Viewfinder
+
+    private var viewfinder: some View {
+        ZStack {
+            if let image = scanningImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .transition(.opacity)
+            } else if !camera.isRunning {
+                VStack(spacing: 12) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 44, weight: .light))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text("Camera unavailable")
+                        .font(.headline)
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Choose a photo or screenshot of a board instead.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+            }
+
+            ViewfinderBrackets(active: isProcessing)
+
+            if isProcessing {
+                ScanLine()
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .accessibilityIdentifier("scan.processing")
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+
+    private var hint: some View {
+        Text(isProcessing ? "Reading the board…" : "Fit the whole board inside the frame")
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: Capsule())
+            .contentTransition(.opacity)
+    }
+
+    // MARK: - Controls
+
+    private var controls: some View {
+        HStack(alignment: .center) {
+            sideButton(icon: "photo.on.rectangle", title: "Photos", id: "scan.gallery") {
+                showPhotoLibrary = true
+            }
 
             Spacer()
 
-            Button {
-                camera.toggleFlash()
-            } label: {
-                Image(systemName: camera.isFlashOn ? "bolt.fill" : "bolt.slash.fill")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(camera.isFlashOn ? NotionTheme.accent : .white)
-                    .frame(width: 42, height: 42)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-    }
-
-    // MARK: - Board Guide
-
-    private var boardGuide: some View {
-        GeometryReader { geo in
-            let size = min(geo.size.width, geo.size.height)
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(.white.opacity(0.5), lineWidth: 2)
-                .frame(width: size, height: size)
-                .overlay {
-                    Canvas { context, canvasSize in
-                        let step = canvasSize.width / 8
-                        for i in 1..<8 {
-                            let x = step * CGFloat(i)
-                            let y = step * CGFloat(i)
-                            context.stroke(
-                                Path { p in
-                                    p.move(to: CGPoint(x: x, y: 0))
-                                    p.addLine(to: CGPoint(x: x, y: canvasSize.height))
-                                },
-                                with: .color(.white.opacity(0.15)),
-                                lineWidth: 0.5
-                            )
-                            context.stroke(
-                                Path { p in
-                                    p.move(to: CGPoint(x: 0, y: y))
-                                    p.addLine(to: CGPoint(x: canvasSize.width, y: y))
-                                },
-                                with: .color(.white.opacity(0.15)),
-                                lineWidth: 0.5
-                            )
-                        }
-                    }
-                }
-                .shadow(color: NotionTheme.accent.opacity(0.12), radius: 12, x: 0, y: 0)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        }
-    }
-
-    // MARK: - Capture Section
-
-    private var captureSection: some View {
-        VStack(spacing: 18) {
-            // Shutter button
-            Button {
-                withAnimation(.easeOut(duration: 0.1)) {
-                    shutterScale = 0.88
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        shutterScale = 1.0
-                    }
-                }
-                camera.capturePhoto { image in
-                    processImage(image, cropToGuide: true)
-                }
-            } label: {
+            Button(action: capture) {
                 ZStack {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 70, height: 70)
-                    Circle()
-                        .strokeBorder(.white, lineWidth: 4)
-                        .frame(width: 80, height: 80)
-                    Circle()
-                        .strokeBorder(NotionTheme.accent.opacity(0.5), lineWidth: 2)
-                        .frame(width: 88, height: 88)
+                    Circle().strokeBorder(.white, lineWidth: 4).frame(width: 80, height: 80)
+                    Circle().fill(camera.isRunning ? Color.white : Color.white.opacity(0.25))
+                        .frame(width: 64, height: 64)
                 }
-                .scaleEffect(shutterScale)
             }
+            .buttonStyle(PressableStyle(scale: 0.9))
+            .disabled(!camera.isRunning || isProcessing)
             .accessibilityLabel("Scan board")
             .accessibilityIdentifier("scan.shutter")
 
-            // Gallery button
-            Button {
-                showPhotoLibrary = true
-            } label: {
-                Text("Use gallery instead")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.75))
+            Spacer()
+
+            sideButton(icon: "square.grid.3x3.square", title: "Set up", id: "scan.manual") {
+                detectedFEN = Position.startFEN
+                editorPhoto = nil
+                navigateToEditor = true
             }
-            .accessibilityIdentifier("scan.gallery")
-            .padding(.bottom, 24)
         }
+        .padding(.horizontal, 36)
+        .padding(.bottom, 24)
+        .disabled(isProcessing)
     }
 
-    // MARK: - Processing Overlay
-
-    private var processingOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.6)
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.2)
-                Text("Scanning board...")
-                    .font(.headline)
-                    .foregroundStyle(.white)
+    private func sideButton(icon: String, title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 52, height: 52)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                Text(title)
+                    .font(.caption.weight(.semibold))
             }
-            .padding(32)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-            .accessibilityIdentifier("scan.processing")
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityIdentifier(id)
+    }
+
+    // MARK: - Scanning
+
+    private func onAppear() {
+        if let path = UITestHooks.scanImagePath {
+            // UI tests inject a board photo instead of using the camera.
+            if !didRunUITestScan, let image = UIImage(contentsOfFile: path) {
+                didRunUITestScan = true
+                processImage(image, cropToGuide: false)
+            }
+        } else if !UITestHooks.isUITest {
+            camera.checkPermissions()
         }
     }
 
-    // MARK: - Toast
-
-    private func toastBanner(_ message: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(NotionTheme.warning)
-            Text(message)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white)
+    private func capture() {
+        Haptics.move()
+        withAnimation(.easeOut(duration: 0.08)) { flash = true }
+        withAnimation(.easeIn(duration: 0.3).delay(0.08)) { flash = false }
+        camera.capturePhoto { image in
+            processImage(image, cropToGuide: true)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.ultraThinMaterial, in: Capsule())
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("scan.toast")
     }
-
-    // MARK: - Image Processing
 
     private func processImage(_ image: UIImage, cropToGuide: Bool) {
+        toastMessage = nil
+        scanningImage = image
         isProcessing = true
         detectedFEN = nil
+        editorPhoto = image
         recognitionService.processImage(image, cropToGuide: cropToGuide)
     }
 
-    private func showToastMessage(_ message: String) {
-        toastMessage = message
-        withAnimation(.easeInOut(duration: 0.3)) {
-            showToast = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showToast = false
+    private func finishScan() {
+        isProcessing = false
+        if let fen = recognitionService.detectedFEN {
+            Haptics.success()
+            detectedFEN = fen
+            navigateToEditor = true
+            // Clear the frozen frame once the editor has covered it.
+            Task {
+                try? await Task.sleep(for: .milliseconds(600))
+                scanningImage = nil
             }
+        } else {
+            Haptics.warning()
+            scanningImage = nil
+            showToast(recognitionService.error ?? "Couldn't read the board. Try again.")
         }
+    }
+
+    private func showToast(_ message: String) {
+        toastMessage = message
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if toastMessage == message { toastMessage = nil }
+        }
+    }
+}
+
+// MARK: - Viewfinder pieces
+
+/// Corner brackets marking the scan area; they pulse while scanning.
+struct ViewfinderBrackets: View {
+    var active: Bool
+    @State private var pulse = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let s = geo.size.width
+            let len = s * 0.14
+            Path { p in
+                let corners: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [(0, 0, 1, 1), (s, 0, -1, 1), (0, s, 1, -1), (s, s, -1, -1)]
+                for (x, y, dx, dy) in corners {
+                    p.move(to: CGPoint(x: x, y: y + dy * len))
+                    p.addLine(to: CGPoint(x: x, y: y + dy * 10))
+                    p.addQuadCurve(to: CGPoint(x: x + dx * 10, y: y), control: CGPoint(x: x, y: y))
+                    p.addLine(to: CGPoint(x: x + dx * len, y: y))
+                }
+            }
+            .stroke(active ? Theme.accent : .white, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            .scaleEffect(active && pulse ? 0.97 : 1)
+            .shadow(color: active ? Theme.accent.opacity(0.6) : .black.opacity(0.3), radius: 8)
+        }
+        .onChange(of: active) { _, isActive in
+            withAnimation(isActive ? .easeInOut(duration: 0.7).repeatForever() : .default) { pulse = isActive }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A glowing band sweeping over the image while the board is read.
+struct ScanLine: View {
+    @State private var progress: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            LinearGradient(colors: [Theme.accent.opacity(0), Theme.accent.opacity(0.45), Theme.accent.opacity(0)],
+                           startPoint: .top, endPoint: .bottom)
+                .frame(height: geo.size.height * 0.25)
+                .offset(y: progress * geo.size.height * 0.85 - geo.size.height * 0.05)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { progress = 1 }
+        }
+        .allowsHitTesting(false)
     }
 }

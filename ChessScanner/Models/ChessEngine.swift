@@ -9,8 +9,28 @@ struct EngineLine: Identifiable {
     var mate: Int?
     var depth: Int
     var pv: [String]
-    var pvString: String
+    /// The principal variation in SAN, one entry per ply.
+    var pvSAN: [String]
     var nodes: Int
+    /// Move number and side of the position the line starts from, for numbering.
+    var startMoveNumber = 1
+    var startsWithBlack = false
+
+    /// "1. e4 e5 2. Nf3" style text, as on Chess.com and Lichess.
+    var numberedLine: String {
+        var parts: [String] = []
+        var number = startMoveNumber
+        for (i, san) in pvSAN.enumerated() {
+            let blackMove = startsWithBlack ? i % 2 == 0 : i % 2 == 1
+            if !blackMove {
+                parts.append("\(number). \(san)")
+            } else {
+                parts.append(i == 0 ? "\(number)... \(san)" : san)
+                number += 1
+            }
+        }
+        return parts.joined(separator: " ")
+    }
 
     var scoreText: String {
         if let m = mate {
@@ -199,11 +219,11 @@ class ChessEngine: ObservableObject {
         }
 
         // Convert UCI PV to SAN
-        let sanString: String
+        let sanMoves: [String]
         if let pos = currentPosition {
-            sanString = pos.uciSequenceToSAN(pvMoves)
+            sanMoves = pos.uciSequenceToSAN(Array(pvMoves.prefix(12))).split(separator: " ").map(String.init)
         } else {
-            sanString = pvMoves.joined(separator: " ")
+            sanMoves = pvMoves
         }
 
         let line = EngineLine(
@@ -212,8 +232,10 @@ class ChessEngine: ObservableObject {
             mate: mateIn,
             depth: depth,
             pv: pvMoves,
-            pvString: sanString,
-            nodes: nodesSearched
+            pvSAN: sanMoves,
+            nodes: nodesSearched,
+            startMoveNumber: currentPosition?.fullMoveNumber ?? 1,
+            startsWithBlack: currentPosition?.sideToMove == .black
         )
 
         pendingLines[pvIndex] = line

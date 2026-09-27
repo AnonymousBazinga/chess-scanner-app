@@ -2,284 +2,280 @@ import SwiftUI
 
 struct AnalysisView: View {
     @StateObject private var viewModel: AnalysisViewModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var appeared = false
+    @State private var copiedFEN = false
 
     init(fen: String) {
         _viewModel = StateObject(wrappedValue: AnalysisViewModel(fen: fen))
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                boardSection
-                    .slideUpAppear(delay: 0.05, trigger: $appeared)
-                controlsSection
-                    .slideUpAppear(delay: 0.15, trigger: $appeared)
-                engineSection
-                    .slideUpAppear(delay: 0.25, trigger: $appeared)
-                moveListSection
-                    .slideUpAppear(delay: 0.32, trigger: $appeared)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+        VStack(spacing: 10) {
+            EngineLinesView(
+                lines: viewModel.engine.lines,
+                isAnalyzing: viewModel.engine.isAnalyzing,
+                depth: viewModel.engine.currentDepth,
+                errorMessage: viewModel.engine.setupError,
+                engineOn: $viewModel.engineEnabled,
+                onLineTap: { viewModel.playLine($0) }
+            )
+
+            boardSection
+
+            moveStrip
+
+            Spacer(minLength: 0)
+
+            toolbar
         }
-        .scrollIndicators(.hidden)
-        .background(NotionTheme.background)
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Analysis")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
-                        viewModel.flipBoard()
-                    } label: {
-                        Label("Flip Board", systemImage: "arrow.up.arrow.down")
-                    }
-
-                    Button {
-                        viewModel.resetToStart()
-                    } label: {
-                        Label("Reset Position", systemImage: "arrow.counterclockwise")
-                    }
-
-                    Button {
                         UIPasteboard.general.string = viewModel.currentFEN
+                        Haptics.success()
+                        copiedFEN = true
                     } label: {
                         Label("Copy FEN", systemImage: "doc.on.doc")
                     }
-
-                    if viewModel.engine.isAnalyzing {
-                        Button {
-                            viewModel.stopEngine()
-                        } label: {
-                            Label("Stop Engine", systemImage: "stop.circle")
-                        }
-                    } else {
-                        Button {
-                            viewModel.startEngine()
-                        } label: {
-                            Label("Start Engine", systemImage: "play.circle")
-                        }
+                    Link(destination: lichessURL) {
+                        Label("Open in Lichess", systemImage: "safari")
+                    }
+                    Button {
+                        viewModel.resetToStart()
+                    } label: {
+                        Label("Back to scanned position", systemImage: "arrow.counterclockwise")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(NotionTheme.textPrimary)
+                        .foregroundStyle(Theme.textPrimary)
                 }
+                .accessibilityIdentifier("analysis.menu")
             }
         }
-        .onAppear {
-            viewModel.startEngine()
-            if !appeared {
-                withAnimation { appeared = true }
+        .overlay(alignment: .top) {
+            if copiedFEN {
+                Pill(text: "FEN copied", icon: "checkmark.circle.fill", color: Theme.accent)
+                    .background(Theme.surface, in: Capsule())
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task {
+                        try? await Task.sleep(for: .seconds(1.6))
+                        withAnimation { copiedFEN = false }
+                    }
             }
         }
-        .onDisappear {
-            viewModel.shutdownEngine()
-        }
+        .animation(Motion.snappy, value: copiedFEN)
+        .onAppear { viewModel.startEngine() }
+        .onDisappear { viewModel.shutdownEngine() }
     }
 
-    // MARK: - Board Section
+    private var lichessURL: URL {
+        let fen = viewModel.currentFEN.replacingOccurrences(of: " ", with: "_")
+        return URL(string: "https://lichess.org/analysis/\(fen)") ?? URL(string: "https://lichess.org/analysis")!
+    }
+
+    // MARK: - Board
+
+    private var topColor: PieceColor { viewModel.flipped ? .white : .black }
+    private var bottomColor: PieceColor { viewModel.flipped ? .black : .white }
 
     private var boardSection: some View {
-        VStack(spacing: 8) {
-            CapturedPiecesRow(
-                pieces: viewModel.capturedPieces(for: viewModel.flipped ? .white : .black),
-                color: viewModel.flipped ? .white : .black,
-                advantage: viewModel.materialAdvantage(for: viewModel.flipped ? .white : .black)
-            )
-            .padding(.horizontal, 4)
+        VStack(spacing: 6) {
+            materialStrip(for: topColor)
 
-            HStack(spacing: 6) {
-                EvalBarView(
-                    score: viewModel.evalScore,
-                    isAnalyzing: viewModel.engine.isAnalyzing,
-                    orientation: .vertical,
-                    flipped: viewModel.flipped
-                )
-                .frame(width: 26)
-
-                BoardView(
+            BoardView(
                     position: viewModel.currentPosition,
                     flipped: viewModel.flipped,
                     selectedSquare: viewModel.selectedSquare,
                     legalMoveSquares: viewModel.legalMoveSquares,
                     lastMove: viewModel.lastMoveSquares,
-                    onSquareTap: { square in
-                        viewModel.handleSquareTap(square)
-                    }
+                    arrows: viewModel.bestMoveArrows,
+                    onSquareTap: { viewModel.handleSquareTap($0) },
+                    onDrop: { viewModel.tryMove(from: $0, to: $1) },
+                    canDrag: { viewModel.canDrag(from: $0) }
                 )
-            }
+                .overlay { promotionOverlay }
+                .padding(.leading, 24)
+                .overlay(alignment: .leading) {
+                    // As an overlay the bar always matches the board's height.
+                    EvalBarView(line: viewModel.topLine, flipped: viewModel.flipped)
+                        .frame(width: 18)
+                }
 
-            CapturedPiecesRow(
-                pieces: viewModel.capturedPieces(for: viewModel.flipped ? .black : .white),
-                color: viewModel.flipped ? .black : .white,
-                advantage: viewModel.materialAdvantage(for: viewModel.flipped ? .black : .white)
-            )
-            .padding(.horizontal, 4)
+            materialStrip(for: bottomColor)
         }
     }
 
-    // MARK: - Controls Section
-
-    private var controlsSection: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 2) {
-                navButton(icon: "backward.end.fill", size: 13) {
-                    viewModel.goToStart()
-                }
-                .disabled(viewModel.currentMoveIndex < 0)
-
-                navButton(icon: "chevron.left", size: 15) {
-                    viewModel.goBack()
-                }
-                .disabled(viewModel.currentMoveIndex < 0)
-
-                navButton(icon: "chevron.right", size: 15) {
-                    viewModel.goForward()
-                }
-                .disabled(viewModel.currentMoveIndex >= viewModel.moveHistory.count - 1)
-
-                navButton(icon: "forward.end.fill", size: 13) {
-                    viewModel.goToEnd()
-                }
-                .disabled(viewModel.currentMoveIndex >= viewModel.moveHistory.count - 1)
+    private func materialStrip(for color: PieceColor) -> some View {
+        let captured = viewModel.capturedPieces(by: color)
+        let lead = viewModel.materialAdvantage(for: color)
+        let toMove = viewModel.currentPosition.sideToMove == color
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(color == .white ? Theme.evalWhite : Theme.evalBlack)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.25)))
+                .frame(width: 10, height: 10)
+            Text(color.name)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(toMove ? Theme.textPrimary : Theme.textTertiary)
+            if toMove {
+                Text("to move")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .transition(.opacity)
             }
-            .glassCard(cornerRadius: 10, padding: 4)
-
+            HStack(spacing: -5) {
+                ForEach(Array(captured.enumerated()), id: \.offset) { _, type in
+                    PieceView(piece: Piece(type: type, color: color.opposite))
+                        .frame(width: 17, height: 17)
+                }
+            }
+            .padding(.leading, 4)
+            if lead > 0 {
+                Text("+\(lead)")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Theme.textSecondary)
+            }
             Spacer()
-
-            HStack(spacing: 2) {
-                navButton(icon: "arrow.up.arrow.down", size: 13) {
-                    viewModel.flipBoard()
-                }
-
-                navButton(icon: "arrow.uturn.backward", size: 13) {
-                    viewModel.undoMove()
-                }
-                .disabled(viewModel.currentMoveIndex < 0)
-            }
-            .glassCard(cornerRadius: 10, padding: 4)
         }
+        .frame(height: 20)
+        .padding(.leading, 24)
+        .animation(Motion.snappy, value: toMove)
     }
-
-    private func navButton(icon: String, size: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(NotionTheme.textPrimary)
-                .frame(width: 44, height: 36)
-        }
-        .buttonStyle(NotionCardButtonStyle())
-    }
-
-    // MARK: - Engine Section
-
-    private var engineSection: some View {
-        EngineLinesView(
-            lines: viewModel.engine.lines,
-            isAnalyzing: viewModel.engine.isAnalyzing,
-            depth: viewModel.engine.currentDepth,
-            nodes: viewModel.engine.nodesSearched,
-            nps: viewModel.engine.nps,
-            onLineTap: { line in
-                viewModel.playLine(line)
-            }
-        )
-    }
-
-    // MARK: - Move List Section
 
     @ViewBuilder
-    private var moveListSection: some View {
-        if !viewModel.moveHistory.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Moves")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(NotionTheme.textPrimary)
-                    .padding(.horizontal, 4)
-
-                moveListContent
+    private var promotionOverlay: some View {
+        if viewModel.pendingPromotion != nil {
+            ZStack {
+                Color.black.opacity(0.45)
+                    .onTapGesture { viewModel.completePromotion(nil) }
+                HStack(spacing: 8) {
+                    ForEach([PieceType.queen, .rook, .bishop, .knight], id: \.rawValue) { type in
+                        Button {
+                            viewModel.completePromotion(type)
+                        } label: {
+                            PieceView(piece: Piece(type: type, color: viewModel.currentPosition.sideToMove))
+                                .padding(8)
+                                .frame(width: 60, height: 60)
+                                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(PressableStyle())
+                        .accessibilityIdentifier("promote.\(type.fullName.lowercased())")
+                    }
+                }
+                .padding(12)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                .shadow(color: .black.opacity(0.4), radius: 20, y: 8)
             }
-            .glassCard(cornerRadius: 10, padding: 12)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .transition(.opacity)
         }
     }
 
-    private var moveListContent: some View {
-        let moves = viewModel.moveHistory
-        return FlowLayout(spacing: 4) {
-            ForEach(Array(moves.enumerated()), id: \.offset) { index, entry in
-                HStack(spacing: 2) {
-                    if index % 2 == 0 {
-                        Text("\(index / 2 + 1).")
-                            .font(.caption)
-                            .foregroundStyle(NotionTheme.textTertiary)
-                    }
-                    Text(entry.san)
-                        .font(.system(size: 13,
-                                      weight: index == viewModel.currentMoveIndex ? .bold : .regular,
-                                      design: .monospaced))
-                        .foregroundStyle(index == viewModel.currentMoveIndex ?
-                                         NotionTheme.textPrimary : NotionTheme.textSecondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            index == viewModel.currentMoveIndex ?
-                            NotionTheme.accent.opacity(0.12) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 5)
-                        )
-                        .onTapGesture {
-                            viewModel.goToMove(index: index)
+    // MARK: - Moves
+
+    private var moveStrip: some View {
+        Group {
+            if let status = viewModel.statusText {
+                Pill(text: status, icon: "flag.checkered", color: Theme.accent)
+                    .frame(maxWidth: .infinity)
+            } else if viewModel.moveHistory.isEmpty {
+                Text("Drag or tap a piece to explore moves")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(maxWidth: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 2) {
+                            ForEach(Array(viewModel.moveHistory.enumerated()), id: \.offset) { index, entry in
+                                moveChip(index: index, san: entry.san).id(index)
+                            }
                         }
+                        .padding(.horizontal, 4)
+                    }
+                    .onChange(of: viewModel.currentMoveIndex) { _, index in
+                        withAnimation(Motion.snappy) { proxy.scrollTo(max(index, 0), anchor: .center) }
+                    }
                 }
             }
         }
-    }
-}
-
-// MARK: - Flow Layout
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 4
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = arrangeSubviews(proposal: proposal, subviews: subviews)
-        return result.size
+        .frame(height: 36)
+        .animation(Motion.snappy, value: viewModel.moveHistory.count)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrangeSubviews(proposal: proposal, subviews: subviews)
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(at: CGPoint(x: bounds.minX + position.x,
-                                               y: bounds.minY + position.y),
-                                   proposal: .unspecified)
-        }
-    }
+    private func moveChip(index: Int, san: String) -> some View {
+        let start = viewModel.startPosition
+        let startBlack = start.sideToMove == .black
+        let startNumber = start.fullMoveNumber
+        let ply = index + (startBlack ? 1 : 0)
+        let isWhiteMove = ply % 2 == 0
+        let number = startNumber + ply / 2
+        let current = index == viewModel.currentMoveIndex
 
-    private func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews)
-        -> (size: CGSize, positions: [CGPoint]) {
-        let maxWidth = proposal.width ?? .infinity
-        var positions: [CGPoint] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var maxX: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
+        return Button {
+            viewModel.goToMove(index: index)
+        } label: {
+            HStack(spacing: 3) {
+                if isWhiteMove || index == 0 {
+                    Text(isWhiteMove ? "\(number)." : "\(number)...")
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                Text(san)
+                    .foregroundStyle(current ? Theme.textPrimary : Theme.textSecondary)
+                    .fontWeight(current ? .bold : .medium)
             }
-            positions.append(CGPoint(x: x, y: y))
-            rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
-            maxX = max(maxX, x)
+            .font(.system(size: 14).monospacedDigit())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(current ? Theme.surfacePressed : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("move.\(index)")
+    }
 
-        return (CGSize(width: maxX, height: y + rowHeight), positions)
+    // MARK: - Toolbar
+
+    private var toolbar: some View {
+        HStack(spacing: 8) {
+            IconButton(icon: "arrow.up.arrow.down", label: "Flip board") { viewModel.flipBoard() }
+                .accessibilityIdentifier("analysis.flip")
+            IconButton(icon: "backward.end.fill", label: "First move") { viewModel.goToStart() }
+                .disabled(!viewModel.canGoBack)
+                .opacity(viewModel.canGoBack ? 1 : 0.4)
+            navButton(icon: "chevron.left", label: "Previous move", enabled: viewModel.canGoBack) {
+                viewModel.goBack()
+            }
+            .accessibilityIdentifier("analysis.back")
+            navButton(icon: "chevron.right", label: "Next move", enabled: viewModel.canGoForward) {
+                viewModel.goForward()
+            }
+            .accessibilityIdentifier("analysis.forward")
+            IconButton(icon: "forward.end.fill", label: "Last move") { viewModel.goToEnd() }
+                .disabled(!viewModel.canGoForward)
+                .opacity(viewModel.canGoForward ? 1 : 0.4)
+        }
+    }
+
+    private func navButton(icon: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityLabel(label)
     }
 }
 
@@ -287,4 +283,5 @@ struct FlowLayout: Layout {
     NavigationStack {
         AnalysisView(fen: Position.startFEN)
     }
+    .preferredColorScheme(.dark)
 }

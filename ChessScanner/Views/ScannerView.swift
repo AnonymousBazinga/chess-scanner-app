@@ -6,6 +6,8 @@ import SwiftUI
 @MainActor
 class CameraModel: NSObject, ObservableObject, @unchecked Sendable {
     @Published var isFlashOn = false
+    /// True once the preview is live; false in the simulator or without permission.
+    @Published var isRunning = false
     @Published var session = AVCaptureSession()
 
     private var output = AVCapturePhotoOutput()
@@ -16,7 +18,8 @@ class CameraModel: NSObject, ObservableObject, @unchecked Sendable {
         case .authorized:
             setupCamera()
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+            // Called on an arbitrary queue: must not inherit main-actor isolation.
+            AVCaptureDevice.requestAccess(for: .video) { @Sendable [weak self] granted in
                 if granted {
                     Task { @MainActor [weak self] in
                         self?.setupCamera()
@@ -48,8 +51,10 @@ class CameraModel: NSObject, ObservableObject, @unchecked Sendable {
         session.commitConfiguration()
 
         let captureSession = session
-        DispatchQueue.global(qos: .background).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             captureSession.startRunning()
+            let running = captureSession.isRunning
+            Task { @MainActor [weak self] in self?.isRunning = running }
         }
     }
 
