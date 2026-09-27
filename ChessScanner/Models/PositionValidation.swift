@@ -5,12 +5,13 @@ extension Position {
     var validationIssues: [String] {
         var issues: [String] = []
         for color in [PieceColor.white, .black] {
-            let kings = pieceCounts(for: color)[.king] ?? 0
+            // `pieceCounts` leaves kings out, so count them directly.
+            let kings = board.joined().filter { $0 == Piece(type: .king, color: color) }.count
             if kings == 0 { issues.append("\(color.name) needs a king") }
             if kings > 1 { issues.append("\(color.name) has \(kings) kings") }
             let pawns = pieceCounts(for: color)[.pawn] ?? 0
             if pawns > 8 { issues.append("\(color.name) has more than 8 pawns") }
-            let total = pieceCounts(for: color).values.reduce(0, +)
+            let total = pieceCounts(for: color).values.reduce(0, +) + kings
             if total > 16 { issues.append("\(color.name) has more than 16 pieces") }
         }
         for file in 0..<8 {

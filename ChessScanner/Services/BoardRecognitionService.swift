@@ -164,16 +164,16 @@ final class BoardRecognizer: @unchecked Sendable {
     static func decode(_ output: MLMultiArray) -> String {
         let pieceChars: [Character] = [".", "P", "N", "B", "R", "Q", "K",
                                        "p", "n", "b", "r", "q", "k"]
-        let strides = output.strides.map(\.intValue)
-        let squareStride = strides[strides.count - 2]
-        let classStride = strides[strides.count - 1]
+        // Index by coordinates, not flat offsets: Core ML may pad rows, so the
+        // strides can exceed the shape and flat indexing would run out of bounds.
+        let leading = Array(repeating: NSNumber(value: 0), count: max(0, output.shape.count - 2))
 
         var board = Array(repeating: Array(repeating: Character("."), count: 8), count: 8)
         for square in 0..<64 {
             var best = 0
             var bestScore = -Double.infinity
             for cls in 0..<13 {
-                let score = output[square * squareStride + cls * classStride].doubleValue
+                let score = output[leading + [NSNumber(value: square), NSNumber(value: cls)]].doubleValue
                 if score > bestScore {
                     bestScore = score
                     best = cls

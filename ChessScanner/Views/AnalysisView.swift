@@ -33,6 +33,8 @@ struct AnalysisView: View {
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Analysis")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

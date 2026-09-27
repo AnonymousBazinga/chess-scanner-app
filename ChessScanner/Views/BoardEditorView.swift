@@ -32,67 +32,43 @@ struct BoardEditView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                header
+            VStack(spacing: 12) {
                 board
                 palette
                 settings
                 actions
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
         .background(Theme.background.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { analyzeBar }
         .navigationTitle("Review Position")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            if photo != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showPhoto = true
+                    } label: {
+                        Image(systemName: "photo")
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+                    .accessibilityLabel("Compare with photo")
+                    .accessibilityIdentifier("editor.photo")
+                }
+            }
+        }
         .navigationDestination(isPresented: $navigateToAnalysis) {
             AnalysisView(fen: finalFEN)
         }
         .overlay { photoOverlay }
         .animation(Motion.snappy, value: showPhoto)
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            if let photo {
-                Button {
-                    showPhoto = true
-                } label: {
-                    Image(uiImage: photo)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(alignment: .bottomTrailing) {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(4)
-                                .background(.black.opacity(0.55), in: Circle())
-                                .padding(3)
-                        }
-                }
-                .buttonStyle(PressableStyle())
-                .accessibilityIdentifier("editor.photo")
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Does this match your board?")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("Pick a piece below and tap squares to fix mistakes, or drag pieces to move them.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     // MARK: - Board
@@ -209,7 +185,7 @@ struct BoardEditView: View {
 
     private var settings: some View {
         let possible = position.possibleCastling()
-        return VStack(spacing: 12) {
+        return VStack(spacing: 10) {
             HStack {
                 Text("To move")
                     .font(.subheadline.weight(.medium))
@@ -236,7 +212,8 @@ struct BoardEditView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
@@ -329,7 +306,7 @@ struct BoardEditView: View {
             }
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity)
-            .frame(height: 54)
+            .frame(height: 50)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(PressableStyle())
@@ -345,17 +322,28 @@ struct BoardEditView: View {
             if let issue = issues.first {
                 Pill(text: issue, icon: "exclamationmark.triangle.fill")
                     .accessibilityIdentifier("editor.issue")
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(.opacity)
+            } else {
+                Text(tool == .move ? "Drag pieces to move them, or pick one below to place it"
+                                   : "Tap squares to \(tool == .erase ? "remove pieces" : "place or remove this piece")")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(height: 33)
+                    .transition(.opacity)
             }
             PrimaryButton(title: "Analyze", icon: "bolt.fill", enabled: issues.isEmpty) {
                 analyze()
             }
             .accessibilityIdentifier("editor.analyze")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(Theme.background.opacity(0.96).ignoresSafeArea())
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background {
+            Theme.background
+                .ignoresSafeArea()
+                .shadow(color: .black.opacity(0.5), radius: 12, y: -4)
+        }
         .animation(Motion.snappy, value: issues.first)
     }
 
