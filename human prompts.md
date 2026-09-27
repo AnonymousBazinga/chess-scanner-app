@@ -18,4 +18,4 @@ The full Claude Code session logs from this build no longer exist on disk. The p
 - **Jan 31, 2026:** Can you do research to find a good model that can take a real life chess board image and then convert it into online format?
 - **Feb 1, 2026:** What is CoreML in Swift Apps?
 
-After the model research, the board-recognition model came from [notnil/fenify-3D](https://github.com/notnil/fenify-3D) (MIT). It was converted to Core ML with `tools/convert_to_coreml.py` and bundled as `ChessScanner/Resources/FenifyChessRecognizer.mlpackage`.
+After the model research, the board-recognition model came from [notnil/fenify-3D](https://github.com/notnil/fenify-3D) (MIT). The full fenify-3D folder (weights, training notebook, inference code) is in `fenify-3D/`. It was converted to Core ML with `fenify-3D/convert_to_coreml.py` and bundled as `ChessScanner/Resources/FenifyChessRecognizer.mlpackage`.
