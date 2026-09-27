@@ -39,13 +39,6 @@ struct EngineLine: Identifiable {
         let pawns = Double(score) / 100.0
         return String(format: "%+.1f", pawns)
     }
-
-    var scoreForBar: Double {
-        if let m = mate {
-            return m > 0 ? 10.0 : -10.0
-        }
-        return max(-10.0, min(10.0, Double(score) / 100.0))
-    }
 }
 
 // MARK: - Chess Engine (Stockfish Wrapper)
@@ -245,30 +238,10 @@ class ChessEngine: ObservableObject {
             currentDepth = depth
         }
 
-        // Publish all lines for the current depth
-        let sortedLines = pendingLines.values
-            .sorted { a, b in
-                if a.mate != nil || b.mate != nil {
-                    if let am = a.mate, let bm = b.mate {
-                        if am > 0 && bm > 0 { return am < bm }
-                        if am < 0 && bm < 0 { return am > bm }
-                        return am > bm
-                    }
-                    if a.mate != nil { return a.mate! > 0 }
-                    return b.mate! < 0
-                }
-                return a.score > b.score
-            }
+        // Stockfish ranks MultiPV lines best-first for the side to move; sorting by
+        // White's score would list Black's best line last when Black is to move.
+        let sortedLines = pendingLines.values.sorted { $0.id < $1.id }
 
         lines = sortedLines
-    }
-
-    // MARK: - Quick Eval
-
-    var evalScore: Double {
-        if let first = lines.first {
-            return first.scoreForBar
-        }
-        return 0.0
     }
 }
