@@ -32,7 +32,7 @@ struct BoardEditView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 board
                 palette
                 settings
@@ -135,7 +135,7 @@ struct BoardEditView: View {
     // MARK: - Palette
 
     private var palette: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             paletteRow(color: .white, leading: .move)
             paletteRow(color: .black, leading: .erase)
         }
@@ -170,7 +170,7 @@ struct BoardEditView: View {
         } label: {
             label()
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
+                .frame(height: 40)
                 .background(isOn ? Theme.surfacePressed : Theme.surfaceRaised.opacity(0.5),
                             in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -201,15 +201,15 @@ struct BoardEditView: View {
 
             Rectangle().fill(Theme.stroke).frame(height: 1)
 
-            HStack(alignment: .center) {
+            HStack(spacing: 6) {
                 Text("Castling")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.textSecondary)
-                Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    castlingRow(.white, possible: possible)
-                    castlingRow(.black, possible: possible)
-                }
+                Spacer(minLength: 4)
+                castlingChip("O-O", color: .white, kingside: true, possible: possible)
+                castlingChip("O-O-O", color: .white, kingside: false, possible: possible)
+                castlingChip("O-O", color: .black, kingside: true, possible: possible)
+                castlingChip("O-O-O", color: .black, kingside: false, possible: possible)
             }
         }
         .padding(.horizontal, 14)
@@ -233,23 +233,12 @@ struct BoardEditView: View {
                     .foregroundStyle(isOn ? Theme.textPrimary : Theme.textSecondary)
             }
             .padding(.horizontal, 14)
-            .frame(height: 34)
+            .frame(height: 30)
             .background(isOn ? Theme.surfacePressed : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("editor.side.\(color.name.lowercased())")
         .accessibilityAddTraits(isOn ? .isSelected : [])
-    }
-
-    private func castlingRow(_ color: PieceColor, possible: CastlingRights) -> some View {
-        HStack(spacing: 6) {
-            Text(color.name)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Theme.textTertiary)
-                .frame(width: 40, alignment: .trailing)
-            castlingChip("O-O", color: color, kingside: true, possible: possible)
-            castlingChip("O-O-O", color: color, kingside: false, possible: possible)
-        }
     }
 
     private func castlingChip(_ title: String, color: PieceColor, kingside: Bool, possible: CastlingRights) -> some View {
@@ -259,12 +248,19 @@ struct BoardEditView: View {
             Haptics.tap()
             castling.set(color: color, kingside: kingside, to: !isOn)
         } label: {
-            Text(title)
-                .font(.caption.weight(.semibold).monospaced())
-                .foregroundStyle(isOn ? Color.white : (allowed ? Theme.textSecondary : Theme.textTertiary.opacity(0.6)))
-                .frame(width: 62, height: 30)
-                .background(isOn ? Theme.accent : Theme.surfaceRaised,
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(color == .white ? Theme.evalWhite : Theme.evalBlack)
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.35)))
+                    .frame(width: 7, height: 7)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(isOn ? Color.white : (allowed ? Theme.textSecondary : Theme.textTertiary.opacity(0.6)))
+            .frame(width: kingside ? 50 : 62, height: 30)
+            .background(isOn ? Theme.accent : Theme.surfaceRaised,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .opacity(allowed ? 1 : 0.6)
         }
         .buttonStyle(PressableStyle())
         .disabled(!allowed)
@@ -300,13 +296,13 @@ struct BoardEditView: View {
             Haptics.tap()
             action()
         } label: {
-            VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 16, weight: .semibold))
-                Text(title).font(.caption2.weight(.semibold))
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 14, weight: .semibold))
+                Text(title).font(.footnote.weight(.semibold))
             }
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
+            .frame(height: 44)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(PressableStyle())
