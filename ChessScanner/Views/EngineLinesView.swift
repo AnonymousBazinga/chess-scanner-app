@@ -78,7 +78,6 @@ struct EngineLinesView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("engine.line")
                 .accessibilityAddTraits(.isButton)
-                .transition(.opacity)
         } else {
             SkeletonRow(delay: Double(index) * 0.15)
         }
@@ -118,6 +117,7 @@ struct EngineLineRow: View {
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(Color.white.opacity(whiteBetter ? 0 : 0.12)))
                 .contentTransition(.numericText())
+                .animation(Motion.snappy, value: line.scoreText)
 
             Text(line.numberedLine)
                 .font(.system(size: 14, weight: isBest ? .semibold : .regular))
@@ -129,7 +129,6 @@ struct EngineLineRow: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 40)
-        .animation(Motion.snappy, value: line.scoreText)
     }
 }
 
