@@ -17,6 +17,7 @@ struct CameraLandingView: View {
     @State private var toastMessage: String?
     @State private var showToast = false
     @State private var pendingHistoryFEN: String?
+    @State private var didRunUITestScan = false
 
     var body: some View {
         ZStack {
@@ -51,7 +52,25 @@ struct CameraLandingView: View {
             }
         }
         .onAppear {
-            camera.checkPermissions()
+            if let path = UITestHooks.scanImagePath {
+                // UI tests inject a board photo instead of using the camera.
+                if !didRunUITestScan, let image = UIImage(contentsOfFile: path) {
+                    didRunUITestScan = true
+                    processImage(image, cropToGuide: false)
+                }
+            } else if !UITestHooks.isUITest {
+                camera.checkPermissions()
+            }
+        }
+        .onChange(of: recognitionService.isProcessing) { _, processing in
+            guard !processing, isProcessing else { return }
+            isProcessing = false
+            if let fen = recognitionService.detectedFEN {
+                detectedFEN = fen
+                navigateToEditor = true
+            } else {
+                showToastMessage(recognitionService.error ?? "Could not detect board")
+            }
         }
         .sheet(isPresented: $showPhotoLibrary) {
             PhotoPicker(image: $capturedImage)
@@ -76,7 +95,7 @@ struct CameraLandingView: View {
         .onChange(of: capturedImage) { _, image in
             if let image {
                 capturedImage = nil
-                processImage(image)
+                processImage(image, cropToGuide: false)
             }
         }
         .onChange(of: showHistory) { _, isShowing in
@@ -102,6 +121,8 @@ struct CameraLandingView: View {
                     .frame(width: 42, height: 42)
                     .background(.ultraThinMaterial, in: Circle())
             }
+            .accessibilityLabel("History")
+            .accessibilityIdentifier("scan.history")
 
             Spacer()
 
@@ -172,7 +193,7 @@ struct CameraLandingView: View {
                     }
                 }
                 camera.capturePhoto { image in
-                    processImage(image)
+                    processImage(image, cropToGuide: true)
                 }
             } label: {
                 ZStack {
@@ -188,6 +209,8 @@ struct CameraLandingView: View {
                 }
                 .scaleEffect(shutterScale)
             }
+            .accessibilityLabel("Scan board")
+            .accessibilityIdentifier("scan.shutter")
 
             // Gallery button
             Button {
@@ -197,6 +220,7 @@ struct CameraLandingView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.75))
             }
+            .accessibilityIdentifier("scan.gallery")
             .padding(.bottom, 24)
         }
     }
@@ -218,6 +242,7 @@ struct CameraLandingView: View {
             }
             .padding(32)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .accessibilityIdentifier("scan.processing")
         }
     }
 
@@ -234,32 +259,16 @@ struct CameraLandingView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
         .background(.ultraThinMaterial, in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("scan.toast")
     }
 
     // MARK: - Image Processing
 
-    private func processImage(_ image: UIImage) {
+    private func processImage(_ image: UIImage, cropToGuide: Bool) {
         isProcessing = true
         detectedFEN = nil
-
-        recognitionService.processImage(image)
-
-        // Observe recognition results
-        Task {
-            // Wait for processing to complete
-            while recognitionService.isProcessing {
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-
-            isProcessing = false
-
-            if let fen = recognitionService.detectedFEN {
-                detectedFEN = fen
-                navigateToEditor = true
-            } else {
-                showToastMessage("Could not detect board")
-            }
-        }
+        recognitionService.processImage(image, cropToGuide: cropToGuide)
     }
 
     private func showToastMessage(_ message: String) {

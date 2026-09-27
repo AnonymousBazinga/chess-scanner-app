@@ -1,7 +1,5 @@
 import SwiftUI
 import CoreML
-import CoreImage
-import CoreImage.CIFilterBuiltins
 
 @MainActor
 class BoardRecognitionService: ObservableObject {
@@ -10,57 +8,39 @@ class BoardRecognitionService: ObservableObject {
     @Published var error: String?
 
     private var processingTask: Task<Void, Never>?
-    private var model: MLModel?
+    private let recognizer: BoardRecognizer?
 
     init() {
-        loadModel()
-    }
-
-    private func loadModel() {
         do {
-            let config = MLModelConfiguration()
-            config.computeUnits = .all
-            let compiled = try FenifyChessRecognizer(configuration: config)
-            model = compiled.model
-            
-            // Debug: Print model input/output specifications
-            if let modelDesc = model?.modelDescription {
-                print("=== FenifyChessRecognizer Model Info ===")
-                print("Inputs:")
-                for (name, desc) in modelDesc.inputDescriptionsByName {
-                    print("  - \(name): \(desc)")
-                    if let constraint = desc.multiArrayConstraint {
-                        print("    Shape: \(constraint.shape)")
-                        print("    DataType: \(constraint.dataType.rawValue)")
-                    }
-                }
-                print("Outputs:")
-                for (name, desc) in modelDesc.outputDescriptionsByName {
-                    print("  - \(name): \(desc)")
-                    if let constraint = desc.multiArrayConstraint {
-                        print("    Shape: \(constraint.shape)")
-                    }
-                }
-            }
+            recognizer = try BoardRecognizer()
         } catch {
             print("Failed to load FenifyChessRecognizer model: \(error)")
+            recognizer = nil
         }
     }
 
-    func processImage(_ image: UIImage) {
+    /// Recognizes the board in `image`. `cropToGuide` crops to the camera's
+    /// on-screen board guide; gallery images are used whole, as fenify expects.
+    func processImage(_ image: UIImage, cropToGuide: Bool = false) {
+        processingTask?.cancel()
         isProcessing = true
         detectedFEN = nil
         error = nil
 
+        let recognizer = recognizer
         processingTask = Task {
             do {
-                let fen = try await analyzeBoard(image: image)
+                guard let recognizer else { throw RecognitionError.modelNotLoaded }
+                let fen = try await Task.detached(priority: .userInitiated) {
+                    try recognizer.recognize(image, cropToGuide: cropToGuide)
+                }.value
+                guard !Task.isCancelled else { return }
                 self.detectedFEN = fen
-                self.isProcessing = false
             } catch {
+                guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription
-                self.isProcessing = false
             }
+            self.isProcessing = false
         }
     }
 
@@ -68,211 +48,143 @@ class BoardRecognitionService: ObservableObject {
         processingTask?.cancel()
         isProcessing = false
     }
+}
 
-    // MARK: - Board Analysis Pipeline
+// MARK: - Recognizer
 
-    private func analyzeBoard(image: UIImage) async throws -> String {
-        guard let cgImage = image.cgImage else {
-            throw RecognitionError.invalidImage
-        }
+/// Runs the fenify-3D Core ML model. Preprocessing mirrors fenify's reference
+/// `BoardPredictor`: resize to 400x400, RGB, ImageNet normalization.
+final class BoardRecognizer: @unchecked Sendable {
+    static let inputSize = 400
+    /// Fraction of the photo's shorter side covered by the camera board guide.
+    static let guideFraction: CGFloat = 0.8
 
-        guard let model = model else {
-            throw RecognitionError.modelNotLoaded
-        }
+    private let model: MLModel
 
-        // Step 1: Preprocess the image (resize to 400x400, normalize with ImageNet stats)
-        let inputArray = try preprocessImage(cgImage)
-
-        // Step 2: Run CoreML inference
-        let outputArray = try runInference(model: model, input: inputArray)
-
-        // Step 3: Decode model output to FEN
-        let fen = decodePrediction(output: outputArray)
-
-        return fen
+    init() throws {
+        let config = MLModelConfiguration()
+        config.computeUnits = .all
+        model = try FenifyChessRecognizer(configuration: config).model
     }
 
-    // MARK: - Image Preprocessing
+    func recognize(_ image: UIImage, cropToGuide: Bool) throws -> String {
+        guard var cgImage = Self.uprightCGImage(image) else {
+            throw RecognitionError.invalidImage
+        }
+        if cropToGuide {
+            cgImage = try Self.centerSquareCrop(cgImage, fraction: Self.guideFraction)
+        }
+        let input = try Self.preprocess(cgImage)
+        let output = try runInference(input)
+        return Self.decode(output)
+    }
 
-    private func preprocessImage(_ cgImage: CGImage) throws -> MLMultiArray {
-        // Fenify expects 300x300 input (NOT 400x400)
-        let targetSize = 300
+    // MARK: Image preparation
+
+    /// `UIImage.cgImage` ignores `imageOrientation`, so camera photos would reach
+    /// the model rotated. Redraw upright first.
+    static func uprightCGImage(_ image: UIImage) -> CGImage? {
+        if image.imageOrientation == .up, let cg = image.cgImage { return cg }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let pixelSize = CGSize(width: image.size.width * image.scale,
+                               height: image.size.height * image.scale)
+        let renderer = UIGraphicsImageRenderer(size: pixelSize, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: pixelSize))
+        }.cgImage
+    }
+
+    static func centerSquareCrop(_ image: CGImage, fraction: CGFloat) throws -> CGImage {
+        let side = CGFloat(min(image.width, image.height)) * fraction
+        let rect = CGRect(x: (CGFloat(image.width) - side) / 2,
+                          y: (CGFloat(image.height) - side) / 2,
+                          width: side, height: side).integral
+        guard let cropped = image.cropping(to: rect) else {
+            throw RecognitionError.preprocessingFailed
+        }
+        return cropped
+    }
+
+    /// Returns a [1, 3, 400, 400] float32 tensor (CHW, ImageNet-normalized RGB).
+    static func preprocess(_ image: CGImage) throws -> MLMultiArray {
+        let size = inputSize
         guard let context = CGContext(
             data: nil,
-            width: targetSize,
-            height: targetSize,
+            width: size,
+            height: size,
             bitsPerComponent: 8,
-            bytesPerRow: targetSize * 4,
+            bytesPerRow: size * 4,
             space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         ) else {
             throw RecognitionError.preprocessingFailed
         }
-
         context.interpolationQuality = .high
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetSize, height: targetSize))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: size, height: size))
 
         guard let pixelData = context.data else {
             throw RecognitionError.preprocessingFailed
         }
+        let pixels = pixelData.bindMemory(to: UInt8.self, capacity: size * size * 4)
 
-        let data = pixelData.bindMemory(to: UInt8.self, capacity: targetSize * targetSize * 4)
-
-        // Create MLMultiArray with shape [1, 3, 300, 300] (batch, channels, height, width)
-        let shape: [NSNumber] = [1, 3, NSNumber(value: targetSize), NSNumber(value: targetSize)]
-        let inputArray = try MLMultiArray(shape: shape, dataType: .float32)
-
-        // ImageNet normalization constants
+        let array = try MLMultiArray(shape: [1, 3, NSNumber(value: size), NSNumber(value: size)],
+                                     dataType: .float32)
+        let out = array.dataPointer.bindMemory(to: Float.self, capacity: 3 * size * size)
         let mean: [Float] = [0.485, 0.456, 0.406]
         let std: [Float] = [0.229, 0.224, 0.225]
+        let plane = size * size
 
-        // Fill the array: convert RGBA pixels to normalized CHW float tensor
-        // Fenify converts to grayscale first, then to 3-channel
-        for y in 0..<targetSize {
-            for x in 0..<targetSize {
-                let pixelOffset = (y * targetSize + x) * 4
-                let r = Float(data[pixelOffset]) / 255.0
-                let g = Float(data[pixelOffset + 1]) / 255.0
-                let b = Float(data[pixelOffset + 2]) / 255.0
-                
-                // Convert to grayscale (same as torchvision.transforms.Grayscale)
-                // Uses ITU-R BT.601 luma coefficients: 0.299*R + 0.587*G + 0.114*B
-                let gray = 0.299 * r + 0.587 * g + 0.114 * b
-
-                // Channel-first layout: [batch, channel, height, width]
-                // All 3 channels get the same grayscale value (Grayscale(num_output_channels=3))
-                let rIdx = 0 * targetSize * targetSize + y * targetSize + x
-                let gIdx = 1 * targetSize * targetSize + y * targetSize + x
-                let bIdx = 2 * targetSize * targetSize + y * targetSize + x
-
-                // Apply ImageNet normalization to the grayscale value
-                inputArray[rIdx] = NSNumber(value: (gray - mean[0]) / std[0])
-                inputArray[gIdx] = NSNumber(value: (gray - mean[1]) / std[1])
-                inputArray[bIdx] = NSNumber(value: (gray - mean[2]) / std[2])
+        for i in 0..<plane {
+            for c in 0..<3 {
+                let value = Float(pixels[i * 4 + c]) / 255.0
+                out[c * plane + i] = (value - mean[c]) / std[c]
             }
         }
-
-        return inputArray
+        return array
     }
 
-    // MARK: - CoreML Inference
+    // MARK: Inference
 
-    private func runInference(model: MLModel, input: MLMultiArray) throws -> MLMultiArray {
-        // Get the actual input name from the model description
-        guard let inputName = model.modelDescription.inputDescriptionsByName.keys.first else {
-            throw RecognitionError.inferenceFailed
-        }
-        
-        print("Using input name: \(inputName)")
-        
+    private func runInference(_ input: MLMultiArray) throws -> MLMultiArray {
         let provider = try MLDictionaryFeatureProvider(
-            dictionary: [inputName: MLFeatureValue(multiArray: input)]
+            dictionary: ["input_image": MLFeatureValue(multiArray: input)]
         )
-
         let result = try model.prediction(from: provider)
-        
-        // Get the actual output name from the model description
-        guard let outputName = model.modelDescription.outputDescriptionsByName.keys.first,
-              let output = result.featureValue(for: outputName)?.multiArrayValue else {
-            // Try common output names as fallback
-            for name in ["output", "var_1213", "logits", "predictions"] {
-                if let output = result.featureValue(for: name)?.multiArrayValue {
-                    print("Using output name: \(name)")
-                    return output
-                }
-            }
+        guard let output = result.featureValue(for: "output")?.multiArrayValue else {
             throw RecognitionError.inferenceFailed
         }
-        
-        print("Using output name: \(outputName)")
         return output
     }
 
-    // MARK: - Decode Prediction to FEN
+    // MARK: Decoding
 
-    private func decodePrediction(output: MLMultiArray) -> String {
-        // Fenify output: 64 squares x 13 classes
-        // Classes: 0=empty, 1=P, 2=N, 3=B, 4=R, 5=Q, 6=K, 7=p, 8=n, 9=b, 10=r, 11=q, 12=k
+    /// Decodes the (1, 64, 13) probabilities. Square index is rank * 8 + file
+    /// (a1 = 0); classes are 0 = empty, 1-6 = PNBRQK, 7-12 = pnbrqk.
+    static func decode(_ output: MLMultiArray) -> String {
+        let pieceChars: [Character] = [".", "P", "N", "B", "R", "Q", "K",
+                                       "p", "n", "b", "r", "q", "k"]
+        let strides = output.strides.map(\.intValue)
+        let squareStride = strides[strides.count - 2]
+        let classStride = strides[strides.count - 1]
 
-        let shape = output.shape.map { $0.intValue }
-        let strides = output.strides.map { $0.intValue }
-        print("=== Model Output ===")
-        print("Shape: \(shape), Strides: \(strides), Count: \(output.count)")
-
-        let pieceChars: [Character] = [
-            ".", "P", "N", "B", "R", "Q", "K",
-            "p", "n", "b", "r", "q", "k"
-        ]
-
-        // Determine which axis is squares (64) and which is classes (13)
-        // Common shapes: [64, 13], [1, 64, 13], [13, 64], [1, 13, 64]
-        var numSquares = 64
-        var numClasses = 13
-        var squaresFirst = true  // [.., 64, 13] vs [.., 13, 64]
-
-        let dims = shape.filter { $0 > 1 }  // ignore batch dim of 1
-        if dims.count >= 2 {
-            let last = dims[dims.count - 1]
-            let secondLast = dims[dims.count - 2]
-            if last == 64 && secondLast == 13 {
-                squaresFirst = false
-                numSquares = 64
-                numClasses = 13
-                print("Detected layout: [13, 64] (classes-first)")
-            } else if last == 13 && secondLast == 64 {
-                squaresFirst = true
-                numSquares = 64
-                numClasses = 13
-                print("Detected layout: [64, 13] (squares-first)")
-            } else {
-                print("Warning: unexpected dims \(dims), assuming [64, 13]")
-            }
-        }
-
-        let ptr = output.dataPointer.bindMemory(to: Float.self, capacity: output.count)
-
-        var board: [[Character]] = Array(repeating: Array(repeating: ".", count: 8), count: 8)
-
-        for squareIdx in 0..<numSquares {
-            let rank = squareIdx / 8
-            let file = squareIdx % 8
-
-            var bestClass = 0
-            var bestScore: Float = -Float.infinity
-
-            for classIdx in 0..<numClasses {
-                // Use strides to compute the correct flat offset
-                let flatIdx: Int
-                if squaresFirst {
-                    // Shape ends with [..., 64, 13]
-                    flatIdx = squareIdx * strides[strides.count - 2] + classIdx * strides[strides.count - 1]
-                } else {
-                    // Shape ends with [..., 13, 64]
-                    flatIdx = classIdx * strides[strides.count - 2] + squareIdx * strides[strides.count - 1]
-                }
-
-                let score = ptr[flatIdx]
+        var board = Array(repeating: Array(repeating: Character("."), count: 8), count: 8)
+        for square in 0..<64 {
+            var best = 0
+            var bestScore = -Double.infinity
+            for cls in 0..<13 {
+                let score = output[square * squareStride + cls * classStride].doubleValue
                 if score > bestScore {
                     bestScore = score
-                    bestClass = classIdx
+                    best = cls
                 }
             }
-
-            board[rank][file] = pieceChars[min(bestClass, pieceChars.count - 1)]
+            board[square / 8][square % 8] = pieceChars[best]
         }
-
-        // Debug: print decoded board
-        print("Decoded board:")
-        for rank in stride(from: 7, through: 0, by: -1) {
-            print("  \(rank + 1): \(String(board[rank]))")
-        }
-
         return boardToFEN(board)
     }
 
-    // MARK: - Board to FEN
-
-    private func boardToFEN(_ board: [[Character]]) -> String {
+    static func boardToFEN(_ board: [[Character]]) -> String {
         var fen = ""
         for rank in stride(from: 7, through: 0, by: -1) {
             var empty = 0
@@ -291,8 +203,22 @@ class BoardRecognitionService: ObservableObject {
             if empty > 0 { fen += "\(empty)" }
             if rank > 0 { fen += "/" }
         }
-        fen += " w KQkq - 0 1"
-        return fen
+        return fen + " w \(castlingRights(board)) - 0 1"
+    }
+
+    /// Only grant castling rights whose king and rook are on their home squares,
+    /// so the engine never sees an impossible castle.
+    static func castlingRights(_ board: [[Character]]) -> String {
+        var rights = ""
+        if board[0][4] == "K" {
+            if board[0][7] == "R" { rights += "K" }
+            if board[0][0] == "R" { rights += "Q" }
+        }
+        if board[7][4] == "k" {
+            if board[7][7] == "r" { rights += "k" }
+            if board[7][0] == "r" { rights += "q" }
+        }
+        return rights.isEmpty ? "-" : rights
     }
 }
 

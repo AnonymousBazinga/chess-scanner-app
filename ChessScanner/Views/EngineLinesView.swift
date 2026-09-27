@@ -24,6 +24,7 @@ struct EngineLinesView: View {
                 HStack(spacing: 10) {
                     if depth > 0 {
                         Text("d\(depth)")
+                            .accessibilityIdentifier("engine.depth")
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .foregroundStyle(NotionTheme.textTertiary)
                             .padding(.horizontal, 8)
@@ -66,6 +67,8 @@ struct EngineLinesView: View {
                 VStack(spacing: 4) {
                     ForEach(lines) { line in
                         EngineLineRow(line: line, isBest: line.id == 1)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("engine.line")
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 onLineTap?(line)

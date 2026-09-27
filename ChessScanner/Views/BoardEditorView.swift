@@ -40,9 +40,15 @@ struct BoardEditView: View {
                 Button("Analyze") {
                     position.sideToMove = sideToMove
                     finalFEN = position.fen
-                    onAnalyze?(finalFEN)
-                    navigateToAnalysis = true
+                    if let onAnalyze {
+                        // The presenter navigates; pushing here too stacked two
+                        // AnalysisViews, each running its own Stockfish.
+                        onAnalyze(finalFEN)
+                    } else {
+                        navigateToAnalysis = true
+                    }
                 }
+                .accessibilityIdentifier("editor.analyze")
                 .fontWeight(.bold)
                 .foregroundStyle(NotionTheme.accent)
             }
@@ -196,6 +202,7 @@ struct BoardEditView: View {
                     )
                 }
                 .buttonStyle(NotionCardButtonStyle())
+                .accessibilityIdentifier("editor.reset")
 
                 Button {
                     for rank in 0..<8 {

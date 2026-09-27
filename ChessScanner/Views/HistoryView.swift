@@ -63,6 +63,7 @@ struct HistoryView: View {
                 } label: {
                     historyRow(item)
                 }
+                .accessibilityIdentifier("history.row")
                 .listRowBackground(NotionTheme.background)
                 .listRowSeparatorTint(NotionTheme.divider)
             }

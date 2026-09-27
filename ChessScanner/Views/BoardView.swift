@@ -121,6 +121,16 @@ struct BoardView: View {
                 onSquareTap?(square)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("square.\(square.algebraic)")
+        .accessibilityLabel(square.algebraic)
+        .accessibilityValue(piece.map { String($0.fenChar) } ?? "empty")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            if interactive {
+                onSquareTap?(square)
+            }
+        }
     }
 
     private func squareColor(isDark: Bool, isSelected: Bool, isLastMove: Bool, isCheck: Bool) -> Color {

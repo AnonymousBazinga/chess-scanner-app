@@ -52,27 +52,62 @@ class ChessEngine: ObservableObject {
 
     // MARK: - Engine Lifecycle
 
-    func initialize() async {
-        guard engine == nil else { return }
+    /// Stockfish 17 networks, bundled by `scripts/fetch_nnue.sh`.
+    static let evalFile = "nn-1111cefa1111"
+    static let evalFileSmall = "nn-37f18f62d772"
 
-        let sfEngine = Engine(type: .stockfish)
-        self.engine = sfEngine
+    @Published var setupError: String?
+    private var setupTask: Task<Engine?, Never>?
 
-        // Start listening for responses
-        responseTask = Task { [weak self] in
-            await sfEngine.start(multipv: self?.multiPV ?? 3)
-
-            guard let stream = await sfEngine.responseStream else { return }
-
-            for await response in stream {
-                self?.handleResponse(response)
+    /// Starts Stockfish once and waits for its UCI handshake; `Engine.send`
+    /// silently drops commands until the engine reports it is running.
+    private func readyEngine() async -> Engine? {
+        if let setupTask { return await setupTask.value }
+        let task = Task { () -> Engine? in
+            guard let big = Bundle.main.url(forResource: Self.evalFile, withExtension: "nnue"),
+                  let small = Bundle.main.url(forResource: Self.evalFileSmall, withExtension: "nnue") else {
+                // Without its networks Stockfish 17 exits the whole process on `go`.
+                setupError = "Stockfish network files are missing from the app bundle"
+                return nil
             }
+
+            let sfEngine = Engine(type: .stockfish)
+            await sfEngine.start(coreCount: ProcessInfo.processInfo.activeProcessorCount, multipv: multiPV)
+            if let stream = await sfEngine.responseStream {
+                responseTask = Task { [weak self] in
+                    for await response in stream {
+                        self?.handleResponse(response)
+                    }
+                }
+            }
+
+            for _ in 0..<200 {
+                if await sfEngine.isRunning { break }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            guard await sfEngine.isRunning else {
+                setupError = "Stockfish failed to start"
+                return nil
+            }
+
+            await sfEngine.send(command: .setoption(id: "EvalFile", value: big.path))
+            await sfEngine.send(command: .setoption(id: "EvalFileSmall", value: small.path))
+            engine = sfEngine
+            engineReady = true
+            return sfEngine
         }
+        setupTask = task
+        return await task.value
+    }
+
+    func initialize() async {
+        _ = await readyEngine()
     }
 
     func shutdown() async {
         responseTask?.cancel()
         responseTask = nil
+        setupTask = nil
         await engine?.stop()
         engine = nil
         engineReady = false
@@ -89,24 +124,14 @@ class ChessEngine: ObservableObject {
         nps = 0
 
         Task {
-            if engine == nil {
-                await initialize()
-            }
+            guard let engine = await readyEngine() else { return }
 
-            guard let engine = engine else { return }
-
-            // Stop any current analysis
+            // The stopped search still reports its final info and bestmove;
+            // drop those so they don't mix into the new position's lines.
+            discardUntilBestmove = isAnalyzing
             await engine.send(command: .stop)
-
-            // Small delay to let stop process
-            try? await Task.sleep(nanoseconds: 50_000_000)
-
-            // Set position
             await engine.send(command: .position(.fen(position.fen)))
-
-            // Start infinite analysis
             await engine.send(command: .go(infinite: true))
-
             isAnalyzing = true
         }
     }
@@ -121,7 +146,13 @@ class ChessEngine: ObservableObject {
 
     // MARK: - Response Handling
 
+    private var discardUntilBestmove = false
+
     private func handleResponse(_ response: EngineResponse) {
+        if discardUntilBestmove {
+            if case .bestmove = response { discardUntilBestmove = false }
+            return
+        }
         switch response {
         case .readyok:
             engineReady = true

@@ -44,3 +44,29 @@ targets:
       SWIFT_EMIT_LOC_STRINGS: true
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       TARGETED_DEVICE_FAMILY: "1"
+
+  ChessScannerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ChessScannerUITests
+        excludes:
+          - "Fixtures/**"
+    dependencies:
+      - target: ChessScanner
+    settings:
+      GENERATE_INFOPLIST_FILE: true
+      PRODUCT_BUNDLE_IDENTIFIER: com.chessscanner.app.uitests
+      SWIFT_VERSION: "5.0"
+      TEST_TARGET_NAME: ChessScanner
+
+schemes:
+  ChessScanner:
+    build:
+      targets:
+        ChessScanner: all
+        ChessScannerUITests: [test]
+    test:
+      targets:
+        - ChessScannerUITests

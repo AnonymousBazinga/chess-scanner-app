@@ -1,0 +1,84 @@
+name: iOS QA
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-tests:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Fetch Stockfish networks
+        run: scripts/fetch_nnue.sh
+
+      - name: Generate Xcode project
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+
+      - name: Reference predictions for fixtures
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet coremltools pillow numpy
+          .venv/bin/python qa/reference_predict.py
+
+      - name: Boot simulator and seed photo library
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in devices if "iOS" in r), key=lambda r: [int(p) for p in r.split("iOS-")[1].split("-")])
+          phones = [d for d in devices[ios[-1]] if d["name"].startswith("iPhone") and "Pro" not in d["name"]]
+          print(phones[0]["udid"])')
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl addmedia "$UDID" ChessScannerUITests/Fixtures/*.png
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Build and run UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project ChessScanner.xcodeproj \
+            -scheme ChessScanner \
+            -destination "id=$SIM_UDID" \
+            -resultBundlePath build/QA.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build/xcodebuild.log | grep -E "error:|warning: unhandled|Test Case|Executed|\*\* (BUILD|TEST)|XCTAssert|failed" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" build/xcodebuild.log
+
+      - name: Export screenshots and results
+        if: always()
+        run: |
+          mkdir -p build/qa
+          if [ -d build/QA.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/QA.xcresult --output-path build/qa || true
+            xcrun xcresulttool get test-results summary --path build/QA.xcresult > build/qa/summary.json || true
+            xcrun xcresulttool get test-results tests --path build/QA.xcresult > build/qa/tests.json || true
+            cat build/qa/summary.json || true
+          fi
+          cp build/xcodebuild.log build/qa/ 2>/dev/null || true
+          cp ChessScannerUITests/Fixtures/expected.json build/qa/ 2>/dev/null || true
+          cp ChessScanner.xcodeproj/project.pbxproj build/qa/generated.project.pbxproj
+          ls -la build/qa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-results
+          path: build/qa
+          retention-days: 14
