@@ -247,14 +247,15 @@ class AnalysisViewModel: ObservableObject {
 
     // MARK: - Material
 
-    /// Pieces `color` has captured from the opponent, most valuable first.
+    /// The opponent pieces `color` is up by, most valuable first (net material, as
+    /// Lichess and Chess.com show it, so arbitrary scanned positions stay tidy).
     func capturedPieces(by color: PieceColor) -> [PieceType] {
-        let start = Position().pieceCounts(for: color.opposite)
-        let current = currentPosition.pieceCounts(for: color.opposite)
+        let mine = currentPosition.pieceCounts(for: color)
+        let theirs = currentPosition.pieceCounts(for: color.opposite)
         var result: [PieceType] = []
         for type in [PieceType.queen, .rook, .bishop, .knight, .pawn] {
-            let missing = (start[type] ?? 0) - (current[type] ?? 0)
-            if missing > 0 { result += Array(repeating: type, count: missing) }
+            let up = (mine[type] ?? 0) - (theirs[type] ?? 0)
+            if up > 0 { result += Array(repeating: type, count: up) }
         }
         return result
     }

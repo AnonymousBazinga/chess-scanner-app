@@ -16,6 +16,8 @@ struct BoardView: View {
     var legalMoveSquares: [Square] = []
     var lastMove: (from: Square, to: Square)?
     var arrows: [BoardArrow] = []
+    /// Squares flagged as problems (e.g. illegal pieces in the editor).
+    var markedSquares: Set<Square> = []
     var showCoordinates = true
     var interactive = true
     var onSquareTap: ((Square) -> Void)?
@@ -33,7 +35,8 @@ struct BoardView: View {
 
     init(position: Position, flipped: Bool = false, selectedSquare: Square? = nil,
          legalMoveSquares: [Square] = [], lastMove: (from: Square, to: Square)? = nil,
-         arrows: [BoardArrow] = [], showCoordinates: Bool = true, interactive: Bool = true,
+         arrows: [BoardArrow] = [], markedSquares: Set<Square> = [],
+         showCoordinates: Bool = true, interactive: Bool = true,
          onSquareTap: ((Square) -> Void)? = nil, onDrop: ((Square, Square?) -> Bool)? = nil,
          canDrag: ((Square) -> Bool)? = nil) {
         self.position = position
@@ -42,6 +45,7 @@ struct BoardView: View {
         self.legalMoveSquares = legalMoveSquares
         self.lastMove = lastMove
         self.arrows = arrows
+        self.markedSquares = markedSquares
         self.showCoordinates = showCoordinates
         self.interactive = interactive
         self.onSquareTap = onSquareTap
@@ -98,6 +102,10 @@ struct BoardView: View {
             Rectangle().fill(square.isDark ? BoardColors.dark : BoardColors.light)
             if isLast || isSelected {
                 Rectangle().fill(BoardColors.highlight.opacity(isSelected ? 0.62 : 0.45))
+            }
+            if markedSquares.contains(square) {
+                Rectangle().fill(BoardColors.check.opacity(0.45))
+                Rectangle().strokeBorder(BoardColors.check, lineWidth: 2)
             }
             if inCheck {
                 RadialGradient(colors: [BoardColors.check, BoardColors.check.opacity(0)],

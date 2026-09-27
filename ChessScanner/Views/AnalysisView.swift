@@ -107,6 +107,8 @@ struct AnalysisView: View {
                     // As an overlay the bar always matches the board's height.
                     EvalBarView(line: viewModel.topLine, flipped: viewModel.flipped)
                         .frame(width: 18)
+                        .opacity(viewModel.engineEnabled ? 1 : 0.35)
+                        .animation(Motion.smooth, value: viewModel.engineEnabled)
                 }
 
             materialStrip(for: bottomColor)
@@ -131,10 +133,10 @@ struct AnalysisView: View {
                     .foregroundStyle(Theme.textSecondary)
                     .transition(.opacity)
             }
-            HStack(spacing: -5) {
+            HStack(spacing: -3) {
                 ForEach(Array(captured.enumerated()), id: \.offset) { _, type in
                     PieceView(piece: Piece(type: type, color: color.opposite))
-                        .frame(width: 17, height: 17)
+                        .frame(width: 18, height: 18)
                 }
             }
             .padding(.leading, 4)

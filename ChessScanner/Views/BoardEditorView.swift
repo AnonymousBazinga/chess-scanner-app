@@ -93,6 +93,7 @@ struct BoardEditView: View {
             position: position,
             flipped: flipped,
             selectedSquare: selected,
+            markedSquares: position.illegalSquares,
             onSquareTap: handleTap,
             onDrop: handleDrop
         )

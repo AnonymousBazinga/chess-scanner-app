@@ -26,6 +26,23 @@ extension Position {
         return issues
     }
 
+    /// Squares holding pieces that make the position illegal: pawns on the back
+    /// ranks and any king beyond the first of its color.
+    var illegalSquares: Set<Square> {
+        var result: Set<Square> = []
+        var kingsSeen: Set<Int> = []
+        for rank in 0..<8 {
+            for file in 0..<8 {
+                guard let piece = board[rank][file] else { continue }
+                if piece.type == .pawn && (rank == 0 || rank == 7) { result.insert(Square(file, rank)) }
+                if piece.type == .king && !kingsSeen.insert(piece.color.rawValue).inserted {
+                    result.insert(Square(file, rank))
+                }
+            }
+        }
+        return result
+    }
+
     /// Castling rights that are still possible given where kings and rooks stand.
     func possibleCastling() -> CastlingRights {
         var rights = CastlingRights()
