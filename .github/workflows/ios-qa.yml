@@ -85,9 +85,9 @@ jobs:
           # The artifact can't always be downloaded by the agent reviewing
           # results, so surface everything important in the log too.
           echo "::group::Crash reports"
-          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
-            echo "=== $f"; head -c 12000 "$f"; echo
-          done
+          ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i "chess" | head -2 | while IFS= read -r f; do
+            echo "=== $f"; head -c 15000 ~/Library/Logs/DiagnosticReports/"$f"; echo
+          done || true
           echo "::endgroup::"
           echo "::group::Test failures and text attachments"
           python3 qa/print_results.py build/qa
