@@ -124,10 +124,6 @@ class ChessEngine: ObservableObject {
 
     // MARK: - Analysis Control
 
-    /// True from `go` until Stockfish reports `bestmove`, even after `stop` is sent.
-    private var searchInFlight = false
-    /// Output still arriving from a superseded search is dropped until its `bestmove`.
-    private var discardUntilBestmove = false
     /// Commands are chained so rapid moves can't interleave stop/position/go.
     private var commandChain: Task<Void, Never>?
     /// The screen that started the current search; only it may pause it.
@@ -151,13 +147,10 @@ class ChessEngine: ObservableObject {
                 isAnalyzing = false
                 return
             }
-            if searchInFlight {
-                discardUntilBestmove = true
-                await engine.send(command: .stop)
-            }
+            // Stockfish finishes the previous search before starting this `go`.
+            await engine.send(command: .stop)
             await engine.send(command: .position(.fen(fen)))
             await engine.send(command: .go(infinite: true))
-            searchInFlight = true
         }
     }
 
@@ -167,19 +160,13 @@ class ChessEngine: ObservableObject {
         let previous = commandChain
         commandChain = Task {
             await previous?.value
-            guard let engine, searchInFlight else { return }
-            await engine.send(command: .stop)
+            await engine?.send(command: .stop)
         }
     }
 
     // MARK: - Response Handling
 
     private func handleResponse(_ response: EngineResponse) {
-        if case .bestmove = response { searchInFlight = false }
-        if discardUntilBestmove {
-            if case .bestmove = response { discardUntilBestmove = false }
-            return
-        }
         switch response {
         case .readyok:
             engineReady = true
@@ -187,8 +174,9 @@ class ChessEngine: ObservableObject {
         case let .info(info):
             processInfo(info)
 
-        case .bestmove:
-            isAnalyzing = false
+        case let .bestmove(move, _):
+            // A superseded search's bestmove is usually illegal here; ignore it.
+            if currentPosition?.moveFromUCI(move) != nil { isAnalyzing = false }
 
         default:
             break
@@ -206,8 +194,12 @@ class ChessEngine: ObservableObject {
             nps = n
         }
 
-        // Only process lines with a PV
-        guard let pvMoves = info.pv, !pvMoves.isEmpty else { return }
+        // Only process lines with a PV that belongs to the current position.
+        // ChessKitEngine delivers each output line in its own task, so output
+        // from a superseded search can arrive after a new one starts, in any
+        // order; its first move is almost never legal in the new position.
+        guard let pvMoves = info.pv, let first = pvMoves.first,
+              currentPosition?.moveFromUCI(first) != nil else { return }
 
         let pvIndex = info.multipv ?? 1
 
