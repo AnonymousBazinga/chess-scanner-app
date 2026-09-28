@@ -89,14 +89,22 @@ class ChessReDBaseline:
         self.features.eval()
         self.classifier.eval()
         self.chars = category_chars  # category id -> piece char
+        T = torchvision.transforms
+        self.transform = T.Compose([T.ToPILImage(), T.ToTensor(),
+                                    T.Normalize(mean=[0.47225544, 0.51124555, 0.55296206],
+                                                std=[0.27787283, 0.27054584, 0.27802786])])
         self.mean = torch.tensor([0.47225544, 0.51124555, 0.55296206]).view(3, 1, 1)
         self.std = torch.tensor([0.27787283, 0.27054584, 0.27802786]).view(3, 1, 1)
 
     def predict(self, img: Image.Image) -> list[str]:
-        # train.py: Resize(1024) (shorter side), ToTensor, dataset mean/std normalize
-        x = torchvision.transforms.functional.to_tensor(img.convert("RGB"))
-        x = torchvision.transforms.functional.resize(x, 1024, antialias=True)
-        x = ((x - self.mean) / self.std).unsqueeze(0)
+        # Reproduces the released checkpoint's pipeline exactly: images were resized
+        # offline to 1024x1024, loaded with read_image().float() (0-255 floats), then
+        # ToPILImage() -> ToTensor() -> Normalize. ToPILImage multiplies floats by 255
+        # before casting to uint8, which wraps; the model was trained on that, so the
+        # same transform objects are applied here rather than a "clean" equivalent.
+        rgb = img.convert("RGB").resize((1024, 1024), Image.BILINEAR)
+        x = torch.from_numpy(np.asarray(rgb).copy()).permute(2, 0, 1).float()
+        x = self.transform(x).unsqueeze(0)
         with torch.no_grad():
             logits = self.classifier(self.features(x).flatten(1)).reshape(64, 13)
         return [self.chars[c] for c in logits.argmax(1).tolist()]  # already FEN order
@@ -137,7 +145,8 @@ def board_png(board: list[str], truth: list[str] | None, size: int) -> Image.Ima
 def comparison_sheet(rows, out: Path):
     size = 220
     header = 36
-    cols = ["Photo", "Ground truth"] + [name for name in rows[0]["preds"]]
+    has_truth = rows[0]["truth"] is not None
+    cols = ["Photo"] + (["Ground truth"] if has_truth else []) + [name for name in rows[0]["preds"]]
     sheet = Image.new("RGB", (len(cols) * (size + 10) + 10, header + len(rows) * (size + 34) + 10), (22, 21, 18))
     d = ImageDraw.Draw(sheet)
     try:
@@ -152,12 +161,14 @@ def comparison_sheet(rows, out: Path):
         photo = row["image"].copy()
         photo.thumbnail((size, size))
         sheet.paste(photo, (10, y))
-        sheet.paste(board_png(row["truth"], None, size), (10 + (size + 10), y))
-        for c, (name, pred) in enumerate(row["preds"].items(), start=2):
+        if has_truth:
+            sheet.paste(board_png(row["truth"], None, size), (10 + (size + 10), y))
+        for c, (name, pred) in enumerate(row["preds"].items(), start=2 if has_truth else 1):
             sheet.paste(board_png(pred, row["truth"], size), (10 + c * (size + 10), y))
-            wrong = sum(a != b for a, b in zip(pred, row["truth"]))
-            d.text((10 + c * (size + 10), y + size + 6), f"{wrong} wrong squares",
-                   fill=(129, 182, 76) if wrong == 0 else (229, 83, 75), font=small)
+            if has_truth:
+                wrong = sum(a != b for a, b in zip(pred, row["truth"]))
+                d.text((10 + c * (size + 10), y + size + 6), f"{wrong} wrong squares",
+                       fill=(129, 182, 76) if wrong == 0 else (229, 83, 75), font=small)
         d.text((10, y + size + 6), row["id"], fill=(168, 165, 160), font=small)
     sheet.save(out, quality=88)
 
@@ -267,7 +278,7 @@ def main():
     photo = Image.open(ROOT / "fenify-3D/readme-assets/prediction_example.png")
     preds = {m.name: m.predict(photo) for m in models}
     comparison_sheet([{"id": "app test photo (no ground truth)", "image": photo.convert("RGB"),
-                       "truth": preds["ChessQueries Lite"], "preds": preds}], args.out / "app-test-photo.jpg")
+                       "truth": None, "preds": preds}], args.out / "app-test-photo.jpg")
 
 
 if __name__ == "__main__":
