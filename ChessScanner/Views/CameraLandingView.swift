@@ -101,12 +101,7 @@ struct CameraLandingView: View {
                 .ignoresSafeArea()
                 .overlay(Color.black.opacity(0.25).ignoresSafeArea())
         } else {
-            ZStack {
-                Theme.background
-                RadialGradient(colors: [Theme.accent.opacity(0.10), .clear],
-                               center: .center, startRadius: 10, endRadius: 420)
-            }
-            .ignoresSafeArea()
+            Theme.background.ignoresSafeArea()
         }
     }
 
@@ -332,7 +327,6 @@ struct ViewfinderBrackets: View {
             }
             .stroke(active ? Theme.accent : .white, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             .scaleEffect(active && pulse ? 0.97 : 1)
-            .shadow(color: active ? Theme.accent.opacity(0.6) : .black.opacity(0.3), radius: 8)
         }
         .onChange(of: active) { _, isActive in
             withAnimation(isActive ? .easeInOut(duration: 0.7).repeatForever() : .default) { pulse = isActive }
@@ -341,16 +335,16 @@ struct ViewfinderBrackets: View {
     }
 }
 
-/// A glowing band sweeping over the image while the board is read.
+/// A thin line sweeping over the image while the board is read.
 struct ScanLine: View {
     @State private var progress: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
-            LinearGradient(colors: [Theme.accent.opacity(0), Theme.accent.opacity(0.45), Theme.accent.opacity(0)],
-                           startPoint: .top, endPoint: .bottom)
-                .frame(height: geo.size.height * 0.25)
-                .offset(y: progress * geo.size.height * 0.85 - geo.size.height * 0.05)
+            Rectangle()
+                .fill(Theme.accent)
+                .frame(height: 3)
+                .offset(y: progress * (geo.size.height - 3))
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { progress = 1 }

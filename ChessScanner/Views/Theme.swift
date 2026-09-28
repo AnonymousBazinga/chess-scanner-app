@@ -173,7 +173,6 @@ struct PieceView: View {
             .resizable()
             .interpolation(.high)
             .aspectRatio(contentMode: .fit)
-            .shadow(color: .black.opacity(0.18), radius: 1, x: 0, y: 1)
     }
 }
 

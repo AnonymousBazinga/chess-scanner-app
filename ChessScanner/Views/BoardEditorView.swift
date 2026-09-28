@@ -1,11 +1,16 @@
 import SwiftUI
 
-/// Lets the user correct a scanned position before analysis, Lichess-editor style:
-/// pick a piece from the palette and tap squares, or drag pieces around.
+/// Lets the user correct a scanned position before analysis, Chess.com-editor style:
+/// drag pieces from the tray onto the board, drag them around, drag them off to
+/// remove them. Tapping a tray piece selects it for placing several by tapping squares.
 struct BoardEditView: View {
     @StateObject private var position: Position
-    @State private var tool: EditorTool = .move
-    @State private var selected: Square?
+    /// Tray piece selected for tap-to-place, if any.
+    @State private var brush: Piece?
+    /// Tray piece being dragged toward the board, and the finger location.
+    @State private var trayDrag: Piece?
+    @State private var trayDragPoint: CGPoint = .zero
+    @State private var boardFrame: CGRect = .zero
     @State private var sideToMove: PieceColor
     @State private var castling: CastlingRights
     @State private var flipped = false
@@ -40,7 +45,10 @@ struct BoardEditView: View {
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .padding(.bottom, 12)
+            .coordinateSpace(name: Self.space)
+            .overlay(alignment: .topLeading) { trayDragGhost }
         }
+        .scrollDisabled(trayDrag != nil)
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
         .background(Theme.background.ignoresSafeArea())
@@ -88,39 +96,34 @@ struct BoardEditView: View {
 
     // MARK: - Board
 
+    private static let space = "editor"
+
     private var board: some View {
         BoardView(
             position: position,
             flipped: flipped,
-            selectedSquare: selected,
             markedSquares: position.illegalSquares,
             onSquareTap: handleTap,
             onDrop: handleDrop
         )
-        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
-    }
-
-    private func handleTap(_ square: Square) {
-        switch tool {
-        case .move:
-            if let from = selected {
-                if from != square { movePiece(from: from, to: square) }
-                withAnimation(Motion.snappy) { selected = nil }
-            } else if position.piece(at: square) != nil {
-                Haptics.tap()
-                withAnimation(Motion.snappy) { selected = square }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { boardFrame = geo.frame(in: .named(Self.space)) }
+                    .onChange(of: geo.frame(in: .named(Self.space))) { _, frame in boardFrame = frame }
             }
-        case .erase:
-            guard position.piece(at: square) != nil else { return }
-            edit { position.setPiece(nil, at: square) }
-        case .place(let piece):
-            let current = position.piece(at: square)
-            edit { position.setPiece(current == piece ? nil : piece, at: square) }
         }
     }
 
+    /// With a tray piece selected, tapping a square places it (or removes it if the
+    /// same piece is already there). Otherwise taps do nothing; pieces are dragged.
+    private func handleTap(_ square: Square) {
+        guard let brush else { return }
+        let current = position.piece(at: square)
+        edit { position.setPiece(current == brush ? nil : brush, at: square) }
+    }
+
     private func handleDrop(from: Square, to: Square?) -> Bool {
-        selected = nil
         guard let to else {
             // Dragged off the board: remove the piece.
             edit { position.setPiece(nil, at: from) }
@@ -129,6 +132,15 @@ struct BoardEditView: View {
         guard to != from else { return false }
         movePiece(from: from, to: to)
         return true
+    }
+
+    /// The board square under a point in the editor's coordinate space.
+    private func boardSquare(at point: CGPoint) -> Square? {
+        guard boardFrame.width > 0, boardFrame.contains(point) else { return nil }
+        let sq = boardFrame.width / 8
+        let col = min(7, Int((point.x - boardFrame.minX) / sq))
+        let row = min(7, Int((point.y - boardFrame.minY) / sq))
+        return flipped ? Square(7 - col, row) : Square(col, 7 - row)
     }
 
     private func movePiece(from: Square, to: Square) {
@@ -148,53 +160,75 @@ struct BoardEditView: View {
         Haptics.move()
     }
 
-    // MARK: - Palette
+    // MARK: - Tray
 
     private var palette: some View {
         VStack(spacing: 6) {
-            paletteRow(color: .white, leading: .move)
-            paletteRow(color: .black, leading: .erase)
+            trayRow(.white)
+            trayRow(.black)
         }
         .padding(8)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func paletteRow(color: PieceColor, leading: EditorTool) -> some View {
+    private func trayRow(_ color: PieceColor) -> some View {
         HStack(spacing: 6) {
-            toolButton(leading) {
-                Image(systemName: leading == .move ? "hand.draw" : "eraser")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(tool == leading ? Theme.textPrimary : Theme.textSecondary)
-            }
-            Rectangle().fill(Theme.stroke).frame(width: 1, height: 28)
             ForEach([PieceType.king, .queen, .rook, .bishop, .knight, .pawn], id: \.rawValue) { type in
-                toolButton(.place(Piece(type: type, color: color))) {
-                    PieceView(piece: Piece(type: type, color: color)).padding(5)
-                }
+                trayPiece(Piece(type: type, color: color))
             }
         }
     }
 
-    private func toolButton<Label: View>(_ value: EditorTool, @ViewBuilder label: () -> Label) -> some View {
-        let isOn = tool == value
-        return Button {
-            Haptics.tap()
-            withAnimation(Motion.snappy) {
-                tool = isOn && value != .move ? .move : value
-                selected = nil
-            }
-        } label: {
-            label()
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background(isOn ? Theme.surfacePressed : Theme.surfaceRaised.opacity(0.5),
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(isOn ? Theme.accent : .clear, lineWidth: 2))
+    /// A tray piece: drag it onto the board, or tap it to select it for tap-to-place.
+    private func trayPiece(_ piece: Piece) -> some View {
+        let isOn = brush == piece
+        return PieceView(piece: piece)
+            .padding(5)
+            .opacity(trayDrag == piece ? 0.35 : 1)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(isOn ? Theme.surfacePressed : Theme.surfaceRaised.opacity(0.5),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isOn ? Theme.accent : .clear, lineWidth: 2))
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
+                    .onChanged { value in
+                        guard hypot(value.translation.width, value.translation.height) > 6 else { return }
+                        if trayDrag == nil { Haptics.tap() }
+                        trayDrag = piece
+                        trayDragPoint = value.location
+                    }
+                    .onEnded { value in
+                        if trayDrag != nil {
+                            if let square = boardSquare(at: value.location) {
+                                edit { position.setPiece(piece, at: square) }
+                            }
+                            trayDrag = nil
+                        } else {
+                            Haptics.tap()
+                            withAnimation(Motion.snappy) { brush = isOn ? nil : piece }
+                        }
+                    }
+            )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(piece.color.name) \(piece.type.fullName)")
+            .accessibilityIdentifier("palette.\(piece.assetName.dropFirst("piece-".count))")
+            .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { brush = isOn ? nil : piece }
+    }
+
+    /// The piece following the finger while dragging from the tray.
+    @ViewBuilder
+    private var trayDragGhost: some View {
+        if let piece = trayDrag {
+            let size = max(44, boardFrame.width / 8) * 1.2
+            PieceView(piece: piece)
+                .frame(width: size, height: size)
+                .position(trayDragPoint)
+                .allowsHitTesting(false)
         }
-        .buttonStyle(PressableStyle())
-        .accessibilityIdentifier(value.identifier)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     // MARK: - Settings
@@ -307,11 +341,13 @@ struct BoardEditView: View {
                     .accessibilityIdentifier("editor.issue")
                     .transition(.opacity)
             } else {
-                Text(tool == .move ? "Drag pieces to move them, or pick one below to place it"
-                                   : "Tap squares to \(tool == .erase ? "remove pieces" : "place or remove this piece")")
+                Text(brush.map { "Tap squares to place the \($0.color.name.lowercased()) \($0.type.fullName.lowercased()). Tap it again to stop." }
+                     ?? "Drag pieces onto the board. Drag them off to remove.")
                     .font(.footnote)
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(height: 33)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(minHeight: 33)
                     .transition(.opacity)
             }
             HStack(spacing: 10) {
@@ -342,9 +378,10 @@ struct BoardEditView: View {
         .background {
             Theme.background
                 .ignoresSafeArea()
-                .shadow(color: .black.opacity(0.5), radius: 12, y: -4)
+                .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
         }
         .animation(Motion.snappy, value: issues.first)
+        .animation(Motion.snappy, value: brush)
     }
 
     private func analyze() {
@@ -385,22 +422,6 @@ struct BoardEditView: View {
             .onTapGesture { showPhoto = false }
             .transition(.opacity)
             .accessibilityIdentifier("editor.photo.full")
-        }
-    }
-}
-
-// MARK: - Tools
-
-enum EditorTool: Equatable {
-    case move
-    case erase
-    case place(Piece)
-
-    var identifier: String {
-        switch self {
-        case .move: return "tool.move"
-        case .erase: return "tool.erase"
-        case .place(let piece): return "palette.\(piece.assetName.dropFirst("piece-".count))"
         }
     }
 }

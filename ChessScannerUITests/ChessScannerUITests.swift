@@ -93,15 +93,24 @@ final class ChessScannerUITests: XCTestCase {
         XCTAssertEqual(readBoardPlacement(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
         screenshot("11-editor-start")
 
-        // Palette: place a black queen on d4, then erase it, then undo the erase.
+        // Drag a white queen from the tray onto e4.
+        let trayQueen = app.buttons["palette.wQ"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        trayQueen.press(forDuration: 0.15, thenDragTo: center("e4"))
+        XCTAssertTrue(waitUntil(timeout: 3) { self.square("e4").value as? String == "Q" }, "Tray drag did not place a queen")
+
+        // Tap-to-place: select the black queen, tap d4 to place it, tap again to remove it.
         app.buttons["palette.bQ"].tap()
         square("d4").tap()
         XCTAssertEqual(square("d4").value as? String, "q")
-        app.buttons["tool.erase"].tap()
         square("d4").tap()
         XCTAssertEqual(square("d4").value as? String, "empty")
         app.buttons["editor.undo"].tap()
         XCTAssertEqual(square("d4").value as? String, "q")
+        app.buttons["palette.bQ"].tap() // deselect
+
+        // Drag a piece off the board to remove it.
+        dragOffBoard("d4")
+        XCTAssertTrue(waitUntil(timeout: 3) { self.square("d4").value as? String == "empty" }, "Drag off board did not remove")
         screenshot("12-editor-palette")
 
         // Validation: clearing the board blocks analysis until kings are placed.
@@ -115,7 +124,6 @@ final class ChessScannerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["editor.analyze"].isEnabled)
 
         // Move a piece in the editor by dragging (knight g1 → f3).
-        app.buttons["tool.move"].tap()
         drag(from: "g1", to: "f3")
         XCTAssertTrue(waitUntil(timeout: 3) { self.square("f3").value as? String == "N" }, "Editor drag failed")
         app.buttons["editor.undo"].tap()
@@ -229,6 +237,15 @@ final class ChessScannerUITests: XCTestCase {
         element("square.\(name)")
     }
 
+    private func center(_ name: String) -> XCUICoordinate {
+        square(name).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    }
+
+    /// Drags a board piece down onto the tray area, which removes it.
+    private func dragOffBoard(_ name: String) {
+        center(name).press(forDuration: 0.15, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.66)))
+    }
+
     private func drag(from: String, to: String) {
         let start = square(from).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let end = square(to).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -256,10 +273,7 @@ final class ChessScannerUITests: XCTestCase {
                 if kings[c]! > 1 { erase.append(name) }
             }
         }
-        if !erase.isEmpty {
-            app.buttons["tool.erase"].tap()
-            for name in erase { square(name).tap() }
-        }
+        for name in erase { dragOffBoard(name) }
         if !kings.keys.contains("K") { app.buttons["palette.wK"].tap(); square(firstEmpty(board)).tap() }
         if !kings.keys.contains("k") { app.buttons["palette.bK"].tap(); square(firstEmpty(expand(readBoardPlacement()))).tap() }
         if element("editor.issue").exists, element("editor.issue").label.contains("move") {

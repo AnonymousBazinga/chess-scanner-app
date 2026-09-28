@@ -174,7 +174,7 @@ struct AnalysisView: View {
                 }
                 .padding(12)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
-                .shadow(color: .black.opacity(0.4), radius: 20, y: 8)
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.stroke))
             }
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .transition(.opacity)

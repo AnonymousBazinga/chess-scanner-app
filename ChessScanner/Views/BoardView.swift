@@ -108,8 +108,7 @@ struct BoardView: View {
                 Rectangle().strokeBorder(BoardColors.check, lineWidth: 2)
             }
             if inCheck {
-                RadialGradient(colors: [BoardColors.check, BoardColors.check.opacity(0)],
-                               center: .center, startRadius: 0, endRadius: sq * 0.62)
+                Rectangle().fill(BoardColors.check.opacity(0.55))
             }
             if showCoordinates {
                 coordinateLabels(square: square, row: row, col: col, sq: sq)
