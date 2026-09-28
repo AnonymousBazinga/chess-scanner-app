@@ -214,12 +214,26 @@ def main():
     fenify_rot_wrong = []
     rows = []
 
-    with RemoteZip(args.images_url) as zf:
-        names = {Path(n).name: n for n in zf.namelist()}
+    zf = RemoteZip(args.images_url)
+    names = {Path(n).name: n for n in zf.namelist()}
+
+    def fetch(member: str) -> bytes:
+        # The dataset host occasionally returns 502s; retry with a fresh connection.
+        nonlocal zf
+        for attempt in range(6):
+            try:
+                return zf.read(member)
+            except Exception as e:  # noqa: BLE001
+                print(f"  fetch failed ({e}); retry {attempt + 1}")
+                time.sleep(5 * 2 ** attempt)
+                zf = RemoteZip(args.images_url)
+        raise RuntimeError(f"could not fetch {member}")
+
+    if True:
         for k, image_id in enumerate(sample):
             meta = images[image_id]
             member = names[Path(meta["path"]).name]
-            img = Image.open(io.BytesIO(zf.read(member)))
+            img = Image.open(io.BytesIO(fetch(member)))
             img.load()
             gt = truth.get(image_id, ["."] * 64)
             preds = {}
