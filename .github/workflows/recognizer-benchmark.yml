@@ -1,0 +1,67 @@
+name: Recognizer benchmark
+
+# Compares board recognizers on a random sample of ChessReD test photos.
+# Results are published to refs/qa/benchmark (not a branch).
+on:
+  push:
+    branches: ["claude/**"]
+    paths: ["benchmark/**", ".github/workflows/recognizer-benchmark.yml"]
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: Number of random test photos
+        default: "100"
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet onnxruntime remotezip gdown pillow numpy chess cairosvg
+
+      - name: Download models and annotations
+        run: |
+          mkdir -p data
+          # ChessReD annotations (4TU.ResearchData)
+          curl -fsSL -o data/annotations.json \
+            https://data.4tu.nl/file/99b5c721-280b-450b-b058-b2900b69a90f/3cae6364-daca-4967-b426-1e4b68cdb64c
+          # ChessReD baseline checkpoint (Google Drive, from the paper's README)
+          gdown --quiet 1sEkIj5MrFncGnmHQt66o_huKjqoMkNQ3 -O data/chessred-resnext.ckpt
+          # ChessQueries Lite int8 ONNX (Hugging Face)
+          curl -fsSL -o data/chessquerieslite.onnx \
+            https://huggingface.co/joelseytre/chessqueries/resolve/main/chessquerieslite-vits-644-int8.onnx
+          ls -lh data
+
+      - name: Run benchmark
+        run: |
+          python benchmark/run.py \
+            --annotations data/annotations.json \
+            --images-url https://data.4tu.nl/file/99b5c721-280b-450b-b058-b2900b69a90f/6329e969-616e-48e3-b893-a0379d1c15ba \
+            --baseline-ckpt data/chessred-resnext.ckpt \
+            --cq-onnx data/chessquerieslite.onnx \
+            --samples "${{ github.event.inputs.samples || '100' }}" \
+            --out results
+
+      - name: Publish results
+        if: always()
+        run: |
+          mkdir -p results && cd results
+          git init -q
+          git add -A
+          git -c user.name="Benchmark" -c user.email="qa@users.noreply.github.com" \
+            commit -qm "Recognizer benchmark for ${GITHUB_SHA::7} (run ${GITHUB_RUN_ID})" --allow-empty
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/qa/benchmark
+        env:
+          GH_TOKEN: ${{ github.token }}

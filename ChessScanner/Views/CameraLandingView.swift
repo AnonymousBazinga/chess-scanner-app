@@ -163,7 +163,7 @@ struct CameraLandingView: View {
                     Text("Camera unavailable")
                         .font(.headline)
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Choose a photo or screenshot of a board instead.")
+                    Text("Choose a photo of your board instead.")
                         .font(.footnote)
                         .foregroundStyle(Theme.textSecondary)
                         .multilineTextAlignment(.center)
