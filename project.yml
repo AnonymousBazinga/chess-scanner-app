@@ -14,6 +14,9 @@ packages:
   ChessKitEngine:
     url: https://github.com/chesskit-app/chesskit-engine.git
     from: "0.5.0"
+  OnnxRuntime:
+    url: https://github.com/microsoft/onnxruntime-swift-package-manager
+    from: "1.24.2"
 
 targets:
   ChessScanner:
@@ -26,6 +29,8 @@ targets:
           - Resources/Info.plist
     dependencies:
       - package: ChessKitEngine
+      - package: OnnxRuntime
+        product: onnxruntime
     info:
       path: ChessScanner/Resources/Info.plist
       properties:

@@ -173,20 +173,10 @@ def comparison_sheet(rows, out: Path):
     sheet.save(out, quality=88)
 
 
-# ---------------------------------------------------------------- main
+# ---------------------------------------------------------------- datasets
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--annotations", type=Path, required=True)
-    ap.add_argument("--images-url", required=True)
-    ap.add_argument("--baseline-ckpt", type=Path, required=True)
-    ap.add_argument("--cq-onnx", type=Path, required=True)
-    ap.add_argument("--samples", type=int, default=100)
-    ap.add_argument("--seed", type=int, default=2026)
-    ap.add_argument("--out", type=Path, required=True)
-    args = ap.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-
+def chessred_samples(args):
+    """Seeded random sample of the ChessReD test split, fetched by HTTP range."""
     ann = json.loads(args.annotations.read_text())
     chars = {}
     for cat in ann["categories"]:
@@ -205,14 +195,8 @@ def main():
         truth.setdefault(p["image_id"], ["."] * 64)[fen_index(p["chessboard_position"])] = chars[p["category_id"]]
 
     test_ids = list(ann["splits"]["test"]["image_ids"])
-    rng = random.Random(args.seed)
-    sample = rng.sample(test_ids, min(args.samples, len(test_ids)))
+    sample = random.Random(args.seed).sample(test_ids, min(args.samples, len(test_ids)))
     print(f"ChessReD test split: {len(test_ids)} images; sampling {len(sample)} (seed {args.seed})")
-
-    models = [Fenify(), ChessReDBaseline(args.baseline_ckpt, category_chars), ChessQueriesLite(args.cq_onnx)]
-    stats = {m.name: {"wrong": [], "time": []} for m in models}
-    fenify_rot_wrong = []
-    rows = []
 
     zf = RemoteZip(args.images_url)
     names = {Path(n).name: n for n in zf.namelist()}
@@ -229,47 +213,86 @@ def main():
                 zf = RemoteZip(args.images_url)
         raise RuntimeError(f"could not fetch {member}")
 
-    if True:
-        for k, image_id in enumerate(sample):
+    def items():
+        for image_id in sample:
             meta = images[image_id]
-            member = names[Path(meta["path"]).name]
-            img = Image.open(io.BytesIO(fetch(member)))
+            img = Image.open(io.BytesIO(fetch(names[Path(meta["path"]).name])))
             img.load()
-            gt = truth.get(image_id, ["."] * 64)
-            preds = {}
-            for m in models:
-                t = time.perf_counter()
-                pred = m.predict(img)
-                stats[m.name]["time"].append(time.perf_counter() - t)
-                stats[m.name]["wrong"].append(sum(a != b for a, b in zip(pred, gt)))
-                preds[m.name] = pred
+            yield Path(meta["path"]).stem, img, truth.get(image_id, ["."] * 64)
+
+    return category_chars, len(sample), items()
+
+
+def cvchess_samples(args):
+    """CVChess: a board, set and room none of the models trained on."""
+    labels = json.loads(args.cvchess_labels.read_text())
+    sample = random.Random(args.seed).sample(labels, min(args.samples, len(labels)))
+    print(f"CVChess: {len(labels)} images; sampling {len(sample)} (seed {args.seed})")
+
+    def expand(fen: str) -> list[str]:
+        board = []
+        for ch in fen.split()[0]:
+            if ch.isdigit():
+                board += ["."] * int(ch)
+            elif ch != "/":
+                board.append(ch)
+        return board
+
+    def items():
+        for entry in sample:
+            path = next(args.cvchess_images.rglob(entry["image"]), None)
+            if path is None:
+                print(f"  missing image {entry['image']}")
+                continue
+            img = Image.open(path)
+            img.load()
+            yield Path(entry["image"]).stem, img, expand(entry["gt_fen"])
+
+    return len(sample), items()
+
+
+# ---------------------------------------------------------------- evaluation
+
+def evaluate(title, models, count, items, out: Path, tag: str):
+    stats = {m.name: {"wrong": [], "time": []} for m in models}
+    fenify_rot_wrong = []
+    rows = []
+    for k, (image_id, img, gt) in enumerate(items):
+        preds = {}
+        for m in models:
+            t = time.perf_counter()
+            pred = m.predict(img)
+            stats[m.name]["time"].append(time.perf_counter() - t)
+            stats[m.name]["wrong"].append(sum(a != b for a, b in zip(pred, gt)))
+            preds[m.name] = pred
+        if "fenify-3D" in preds:
             # fenify assumes White at the bottom of the photo; also score its best
             # rotation as a generous upper bound for photos taken from other sides.
             grid = np.array(preds["fenify-3D"]).reshape(8, 8)
             fenify_rot_wrong.append(min(
-                sum(a != b for a, b in zip(np.rot90(grid, k).flatten().tolist(), gt)) for k in range(4)))
-            rows.append({"id": Path(meta["path"]).stem, "image": img.convert("RGB"), "truth": gt, "preds": preds})
-            print(f"[{k + 1}/{len(sample)}] {Path(meta['path']).name}: " +
-                  ", ".join(f"{n}={stats[n]['wrong'][-1]}" for n in stats))
+                sum(a != b for a, b in zip(np.rot90(grid, r).flatten().tolist(), gt)) for r in range(4)))
+        small = img.convert("RGB")
+        small.thumbnail((440, 440))
+        rows.append({"id": image_id, "image": small, "truth": gt, "preds": preds})
+        print(f"[{tag} {k + 1}/{count}] {image_id}: " + ", ".join(f"{n}={stats[n]['wrong'][-1]}" for n in stats))
 
     def summarize(wrong, times=None):
         w = np.array(wrong)
-        out = {
+        result = {
             "square_accuracy": float(1 - w.mean() / 64),
             "mean_wrong_squares": float(w.mean()),
             "boards_perfect": float((w == 0).mean()),
             "boards_le1_error": float((w <= 1).mean()),
         }
         if times is not None:
-            out["sec_per_image_cpu"] = float(np.mean(times))
-        return out
+            result["sec_per_image_cpu"] = float(np.mean(times))
+        return result
 
     results = {name: summarize(s["wrong"], s["time"]) for name, s in stats.items()}
-    results["fenify-3D (best rotation, upper bound)"] = summarize(fenify_rot_wrong)
-    (args.out / "results.json").write_text(json.dumps(
-        {"samples": len(sample), "seed": args.seed, "results": results}, indent=2))
+    if fenify_rot_wrong:
+        results["fenify-3D (best rotation, upper bound)"] = summarize(fenify_rot_wrong)
 
-    lines = [f"ChessReD test split, {len(sample)} random photos (seed {args.seed})", "",
+    lines = [f"{title}: {len(rows)} random photos", "",
              f"{'Model':42} {'Square acc':>10} {'Wrong/board':>12} {'Perfect':>8} {'<=1 err':>8} {'s/img':>6}"]
     for name, r in results.items():
         lines.append(f"{name:42} {r['square_accuracy']*100:9.2f}% {r['mean_wrong_squares']:12.2f} "
@@ -277,16 +300,50 @@ def main():
                      f"{r.get('sec_per_image_cpu', float('nan')):6.2f}")
     table = "\n".join(lines)
     print("\n" + table)
-    (args.out / "results.txt").write_text(table + "\n")
 
-    with open(args.out / "predictions.csv", "w") as f:
+    with open(out / f"predictions-{tag}.csv", "w") as f:
         f.write("image," + ",".join(stats) + ",truth\n")
         for row in rows:
             f.write(row["id"] + "," + ",".join(to_placement(p) for p in row["preds"].values()) +
                     "," + to_placement(row["truth"]) + "\n")
+    for i in range(0, min(len(rows), 12), 6):
+        comparison_sheet(rows[i:i + 6], out / f"samples-{tag}-{i // 6 + 1}.jpg")
+    return table, results
 
-    for i in range(0, min(len(rows), 24), 6):
-        comparison_sheet(rows[i:i + 6], args.out / f"samples-{i // 6 + 1}.jpg")
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--annotations", type=Path, required=True)
+    ap.add_argument("--images-url", required=True)
+    ap.add_argument("--cvchess-labels", type=Path)
+    ap.add_argument("--cvchess-images", type=Path)
+    ap.add_argument("--baseline-ckpt", type=Path, required=True)
+    ap.add_argument("--cq-onnx", type=Path, required=True)
+    ap.add_argument("--samples", type=int, default=100)
+    ap.add_argument("--seed", type=int, default=2026)
+    ap.add_argument("--out", type=Path, required=True)
+    args = ap.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
+
+    category_chars, count, items = chessred_samples(args)
+    models = [Fenify(), ChessReDBaseline(args.baseline_ckpt, category_chars), ChessQueriesLite(args.cq_onnx)]
+
+    tables, all_results = [], {}
+    # CVChess first: it is the unseen-board test, the one that matters most.
+    if args.cvchess_labels and args.cvchess_images and args.cvchess_images.exists():
+        cv_count, cv_items = cvchess_samples(args)
+        table, results = evaluate("CVChess (unseen board, set and room)", models, cv_count, cv_items,
+                                  args.out, "cvchess")
+        tables.append(table)
+        all_results["cvchess"] = results
+        (args.out / "results.txt").write_text("\n\n".join(tables) + "\n")
+
+    table, results = evaluate(f"ChessReD test split (seed {args.seed})", models, count, items, args.out, "chessred")
+    tables.append(table)
+    all_results["chessred"] = results
+    (args.out / "results.txt").write_text("\n\n".join(tables) + "\n")
+    (args.out / "results.json").write_text(json.dumps(
+        {"samples": args.samples, "seed": args.seed, "results": all_results}, indent=2))
 
     # The app's own test photo (no ground truth): what each model reads.
     photo = Image.open(ROOT / "fenify-3D/readme-assets/prediction_example.png")

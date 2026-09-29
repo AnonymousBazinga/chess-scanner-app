@@ -24,8 +24,8 @@ jobs:
         with:
           xcode-version: latest-stable
 
-      - name: Fetch Stockfish networks
-        run: scripts/fetch_nnue.sh
+      - name: Fetch models (Stockfish networks, ChessQueries Lite)
+        run: scripts/fetch_models.sh
 
       - name: Generate Xcode project
         run: |
@@ -39,7 +39,7 @@ jobs:
       - name: Reference predictions for fixtures
         run: |
           python -m venv .venv
-          .venv/bin/pip install --quiet coremltools pillow numpy
+          .venv/bin/pip install --quiet onnxruntime pillow numpy
           .venv/bin/python qa/reference_predict.py
 
       - name: Boot simulator and seed photo library

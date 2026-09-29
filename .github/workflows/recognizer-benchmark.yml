@@ -18,7 +18,7 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +42,12 @@ jobs:
           # ChessQueries Lite int8 ONNX (Hugging Face)
           curl -fsSL -o data/chessquerieslite.onnx \
             https://huggingface.co/joelseytre/chessqueries/resolve/main/chessquerieslite-vits-644-int8.onnx
+          # CVChess: unseen board/set/room (evaluation only). Labels are vendored in
+          # the ChessQueries repo; images live in the dataset's Google Drive folder.
+          curl -fsSL -o data/cvchess_labels.json \
+            https://raw.githubusercontent.com/JSeytre/chessqueries/main/chessqueries/data/resources/cvchess_labels.json
+          gdown --folder 1lxS3GpYvDLU_1a9oqzIRlNmJUSYbmGZp -O data/cvchess --remaining-ok || true
+          echo "CVChess images: $(find data/cvchess -iname '*.jp*g' | wc -l)"
           ls -lh data
 
       - name: Run benchmark
@@ -49,6 +55,8 @@ jobs:
           python benchmark/run.py \
             --annotations data/annotations.json \
             --images-url https://data.4tu.nl/file/99b5c721-280b-450b-b058-b2900b69a90f/6329e969-616e-48e3-b893-a0379d1c15ba \
+            --cvchess-labels data/cvchess_labels.json \
+            --cvchess-images data/cvchess \
             --baseline-ckpt data/chessred-resnext.ckpt \
             --cq-onnx data/chessquerieslite.onnx \
             --samples "${{ github.event.inputs.samples || '100' }}" \

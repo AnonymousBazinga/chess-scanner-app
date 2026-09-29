@@ -70,7 +70,7 @@ class ChessEngine: ObservableObject {
 
     // MARK: - Engine Lifecycle
 
-    /// Stockfish 17 networks, bundled by `scripts/fetch_nnue.sh`.
+    /// Stockfish 17 networks, bundled by `scripts/fetch_models.sh`.
     static let evalFile = "nn-1111cefa1111"
     static let evalFileSmall = "nn-37f18f62d772"
 

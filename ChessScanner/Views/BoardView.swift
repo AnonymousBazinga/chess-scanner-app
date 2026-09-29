@@ -18,6 +18,8 @@ struct BoardView: View {
     var arrows: [BoardArrow] = []
     /// Squares flagged as problems (e.g. illegal pieces in the editor).
     var markedSquares: Set<Square> = []
+    /// Squares to double-check (e.g. low-confidence scan results).
+    var uncertainSquares: Set<Square> = []
     var showCoordinates = true
     var interactive = true
     var onSquareTap: ((Square) -> Void)?
@@ -35,7 +37,7 @@ struct BoardView: View {
 
     init(position: Position, flipped: Bool = false, selectedSquare: Square? = nil,
          legalMoveSquares: [Square] = [], lastMove: (from: Square, to: Square)? = nil,
-         arrows: [BoardArrow] = [], markedSquares: Set<Square> = [],
+         arrows: [BoardArrow] = [], markedSquares: Set<Square> = [], uncertainSquares: Set<Square> = [],
          showCoordinates: Bool = true, interactive: Bool = true,
          onSquareTap: ((Square) -> Void)? = nil, onDrop: ((Square, Square?) -> Bool)? = nil,
          canDrag: ((Square) -> Bool)? = nil) {
@@ -46,6 +48,7 @@ struct BoardView: View {
         self.lastMove = lastMove
         self.arrows = arrows
         self.markedSquares = markedSquares
+        self.uncertainSquares = uncertainSquares
         self.showCoordinates = showCoordinates
         self.interactive = interactive
         self.onSquareTap = onSquareTap
@@ -103,6 +106,9 @@ struct BoardView: View {
             if isLast || isSelected {
                 Rectangle().fill(BoardColors.highlight.opacity(isSelected ? 0.62 : 0.45))
             }
+            if uncertainSquares.contains(square) && !markedSquares.contains(square) {
+                Rectangle().strokeBorder(BoardColors.uncertain, lineWidth: max(2, sq * 0.06))
+            }
             if markedSquares.contains(square) {
                 Rectangle().fill(BoardColors.check.opacity(0.45))
                 Rectangle().strokeBorder(BoardColors.check, lineWidth: 2)
@@ -119,6 +125,7 @@ struct BoardView: View {
         .accessibilityIdentifier("square.\(square.algebraic)")
         .accessibilityLabel(square.algebraic)
         .accessibilityValue(piece.map { String($0.fenChar) } ?? "empty")
+        .accessibilityHint(uncertainSquares.contains(square) ? "uncertain" : "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { if interactive { onSquareTap?(square) } }
     }

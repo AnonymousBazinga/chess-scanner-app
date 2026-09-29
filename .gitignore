@@ -6,3 +6,4 @@ xcuserdata/
 .claude/settings.local.json
 ChessScannerUITests/Fixtures/expected.json
 ChessScanner/Resources/NNUE/
+ChessScanner/Resources/Models/
