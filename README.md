@@ -40,14 +40,16 @@ git fetch origin refs/qa/latest && git archive FETCH_HEAD | tar -x -C qa-results
 
 ## Recognition accuracy
 
-`benchmark/run.py` (the `Recognizer benchmark` workflow) compares recognizers on random
-real-phone photos from ChessReD's test split and on CVChess, a board, set and room none of the
-models trained on. Results are published to `refs/qa/benchmark`. On 100 ChessReD test photos:
+`benchmark/run.py` compares recognizers on real phone photos of physical boards: ChessReD's
+test split (same collection ChessReD/ChessQueries trained on, different photos) and CVChess,
+a board, set and room none of the models trained on. Each model gets the preprocessing from its
+own reference code.
 
-| Model | Square accuracy | Wrong squares / board | Boards exactly right |
-|---|---|---|---|
-| fenify-3D (previous) | 40.3% | 38.2 | 0% |
-| ChessQueries Lite | 99.9% | 0.05 | 95% |
+| Model | ChessReD test (100 photos): wrong squares / board, boards exactly right | CVChess unseen (all 352 for ChessQueries, 100 for others): wrong squares / board, boards exactly right |
+|---|---|---|
+| fenify-3D (previous) | 38.2 · 0% | 34.9 · 0% |
+| ChessReD ResNeXt baseline | 3.2 · 21% | 10.3 · 0% |
+| **ChessQueries Lite (current)** | **0.05 · 95%** | **1.3 · 60%** (80% with at most one wrong square) |
 
 ## License note
 
