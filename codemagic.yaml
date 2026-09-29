@@ -1,0 +1,69 @@
+# Codemagic CI: builds the app, runs the UI test suite in an iPhone simulator,
+# and keeps screenshots of every step as build artifacts.
+workflows:
+  ios-ui-tests:
+    name: iOS UI tests
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    triggering:
+      events: []  # started via the Codemagic API
+    scripts:
+      - name: Fetch models (Stockfish networks, ChessQueries Lite)
+        script: scripts/fetch_models.sh
+
+      - name: Generate Xcode project
+        script: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+
+      - name: Reference predictions for fixtures
+        script: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet onnxruntime pillow numpy
+          .venv/bin/python qa/reference_predict.py
+
+      - name: Boot simulator and seed photo library
+        script: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in devices if "iOS" in r), key=lambda r: [int(p) for p in r.split("iOS-")[1].split("-")])
+          phones = [d for d in devices[ios[-1]] if d["name"].startswith("iPhone") and "Pro" not in d["name"]]
+          print(phones[0]["udid"])')
+          echo "SIM_UDID=$UDID" >> $CM_ENV
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl addmedia "$UDID" ChessScannerUITests/Fixtures/*.png
+
+      - name: Build and run UI tests
+        script: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild test \
+            -project ChessScanner.xcodeproj \
+            -scheme ChessScanner \
+            -destination "id=$SIM_UDID" \
+            -resultBundlePath build/QA.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build/xcodebuild.log | grep -E "error:|Test Case|\*\* (BUILD|TEST)" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" build/xcodebuild.log
+        ignore_failure: true
+
+      - name: Export screenshots and results
+        script: |
+          mkdir -p build/qa
+          if [ -d build/QA.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/QA.xcresult --output-path build/qa || true
+            xcrun xcresulttool get test-results summary --path build/QA.xcresult > build/qa/summary.json || true
+          fi
+          cp build/xcodebuild.log build/qa/ 2>/dev/null || true
+          cp ChessScannerUITests/Fixtures/expected.json build/qa/ 2>/dev/null || true
+          python3 qa/print_results.py build/qa --export build/qa-publish \
+            --crash-dir ~/Library/Logs/DiagnosticReports || true
+          cd build/qa-publish && zip -qr ../qa-results.zip .
+    artifacts:
+      - build/qa-results.zip
+      - build/qa-publish/*.jpg
+      - build/qa-publish/results.txt
