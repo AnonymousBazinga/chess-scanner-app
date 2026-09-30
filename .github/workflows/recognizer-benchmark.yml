@@ -41,7 +41,7 @@ jobs:
           gdown --quiet 1sEkIj5MrFncGnmHQt66o_huKjqoMkNQ3 -O data/chessred-resnext.ckpt
           # ChessQueries Lite int8 ONNX (Hugging Face)
           curl -fsSL -o data/chessquerieslite.onnx \
-            https://huggingface.co/joelseytre/chessqueries/resolve/main/chessquerieslite-vits-644-int8.onnx
+            https://huggingface.co/joelseytre/chessqueries/resolve/5d29dfc5b289a31c80018154c797ebe4f0713321/chessquerieslite-vits-644-int8.onnx
           # CVChess: unseen board/set/room (evaluation only). Labels are vendored in
           # the ChessQueries repo; images live in the dataset's Google Drive folder.
           curl -fsSL -o data/cvchess_labels.json \

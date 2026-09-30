@@ -26,7 +26,12 @@ for net in nn-1111cefa1111.nnue nn-37f18f62d772.nnue; do
   fi
 done
 
-fetch "https://huggingface.co/joelseytre/chessqueries/resolve/main/chessquerieslite-vits-644-int8.onnx" \
-  "$RES/Models/chessquerieslite-vits-644-int8.onnx"
+# Pinned to the last upstream commit that ships this ONNX export (later commits
+# removed it); it's the exact file the benchmark in README.md measured.
+MODEL="$RES/Models/chessquerieslite-vits-644-int8.onnx"
+fetch "https://huggingface.co/joelseytre/chessqueries/resolve/5d29dfc5b289a31c80018154c797ebe4f0713321/chessquerieslite-vits-644-int8.onnx" "$MODEL"
+if [ "$(sha256 "$MODEL")" != "1c7b2968263b9a51b4405f4cad8228a81283fdc458031f13f0c53fa2c147c402" ]; then
+  echo "Checksum mismatch for $(basename "$MODEL")" >&2; rm -f "$MODEL"; exit 1
+fi
 
 ls -lh "$RES/NNUE" "$RES/Models"
