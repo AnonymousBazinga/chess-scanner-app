@@ -1,0 +1,35 @@
+{
+  "samples": 100,
+  "seed": 2026,
+  "results": {
+    "chessred": {
+      "fenify-3D": {
+        "square_accuracy": 0.40296875,
+        "mean_wrong_squares": 38.21,
+        "boards_perfect": 0.0,
+        "boards_le1_error": 0.0,
+        "sec_per_image_cpu": 0.126218537109998
+      },
+      "ChessReD ResNeXt": {
+        "square_accuracy": 0.94953125,
+        "mean_wrong_squares": 3.23,
+        "boards_perfect": 0.21,
+        "boards_le1_error": 0.34,
+        "sec_per_image_cpu": 2.453598296530005
+      },
+      "ChessQueries Lite": {
+        "square_accuracy": 0.99921875,
+        "mean_wrong_squares": 0.05,
+        "boards_perfect": 0.95,
+        "boards_le1_error": 1.0,
+        "sec_per_image_cpu": 0.5307711073799962
+      },
+      "fenify-3D (best rotation, upper bound)": {
+        "square_accuracy": 0.6109375,
+        "mean_wrong_squares": 24.9,
+        "boards_perfect": 0.0,
+        "boards_le1_error": 0.0
+      }
+    }
+  }
+}

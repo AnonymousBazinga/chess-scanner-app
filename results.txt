@@ -1,0 +1,7 @@
+ChessReD test split (seed 2026): 100 random photos
+
+Model                                      Square acc  Wrong/board  Perfect  <=1 err  s/img
+fenify-3D                                      40.30%        38.21     0.0%     0.0%   0.13
+ChessReD ResNeXt                               94.95%         3.23    21.0%    34.0%   2.45
+ChessQueries Lite                              99.92%         0.05    95.0%   100.0%   0.53
+fenify-3D (best rotation, upper bound)         61.09%        24.90     0.0%     0.0%    nan
