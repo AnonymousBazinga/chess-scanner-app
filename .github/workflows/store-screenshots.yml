@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - ChessScannerUITests/AppStoreScreenshots.swift
+      - ChessScanner/Views/**
       - .github/workflows/store-screenshots.yml
 
 permissions:

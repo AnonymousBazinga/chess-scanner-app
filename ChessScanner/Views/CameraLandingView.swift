@@ -150,9 +150,13 @@ struct CameraLandingView: View {
     private var viewfinder: some View {
         ZStack {
             if let image = scanningImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+                // Fill the square without letting a non-square photo widen the layout.
+                Color.clear
+                    .overlay {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .transition(.opacity)
             } else if !camera.isRunning {
