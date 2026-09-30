@@ -47,6 +47,9 @@ for test in tests:
         clean = re.sub(r"_\d+_[0-9A-F-]{36}", "", label)
         if file.suffix == ".txt":
             emit(f"--- {clean}\n{file.read_text(errors='replace')[:4000]}")
+        elif file.suffix == ".mp4" and args.export:
+            # Xcode records each test's screen; keep it so the flow can be watched.
+            shutil.copy(file, args.export / f"{test_name}--recording.mp4")
         elif file.suffix == ".png" and args.export:
             out = args.export / f"{test_name}--{Path(clean).stem}.jpg"
             subprocess.run(["sips", "-Z", "900", "-s", "format", "jpeg", "-s", "formatOptions", "70",
