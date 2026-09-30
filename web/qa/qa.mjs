@@ -31,11 +31,13 @@ const browser = await chromium.launch({ args, executablePath: process.env.CHROMI
 const context = await browser.newContext({
   ...DEVICE,
   permissions: ['camera'],
+  // The sandbox proxy re-signs HTTPS; real phones never need this.
+  ignoreHTTPSErrors: !!process.env.HTTPS_PROXY,
   recordVideo: { dir: OUT, size: DEVICE.viewport },
 });
 const page = await context.newPage();
 const errors = [];
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+page.on('pageerror', (e) => errors.push(`pageerror: ${e.message} @ ${(e.stack || '').split('\n').slice(1, 3).join(' | ')}`));
 page.on('console', (m) => { if (m.type() === 'error' && !/cpuid_info/.test(m.text())) errors.push(`console: ${m.text()}`); });
 
 const results = [];

@@ -29,7 +29,11 @@ export function loadRecognizer(onProgress) {
 }
 
 async function createSession(onProgress) {
-  ortModule ??= await import(/* webpackIgnore: true */ `${ORT_BASE}ort.wasm.min.mjs`);
+  try {
+    ortModule ??= await import(/* webpackIgnore: true */ `${ORT_BASE}ort.wasm.min.mjs`);
+  } catch {
+    throw new Error("Couldn't load the scanner. Check your connection and try again.");
+  }
   const ort = ortModule;
   ort.env.wasm.wasmPaths = ORT_BASE;
   ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
@@ -45,8 +49,9 @@ async function fetchModel(onProgress) {
     onProgress?.(1);
     return new Uint8Array(await cached.arrayBuffer());
   }
-  const res = await fetch(MODEL_URL);
-  if (!res.ok) throw new Error(`Couldn't download the scanner (${res.status})`);
+  let res;
+  try { res = await fetch(MODEL_URL); } catch { res = null; }
+  if (!res?.ok) throw new Error("Couldn't download the scanner. Check your connection and try again.");
   const total = Number(res.headers.get('content-length')) || MODEL_BYTES;
   const reader = res.body.getReader();
   const out = new Uint8Array(total);

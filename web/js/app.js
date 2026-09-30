@@ -680,9 +680,10 @@ function numbered(sans, chess) {
 
 function openAnalysis(fen) {
   analysis ??= new Analysis();
+  // Load first: showing the view starts the engine on the current position.
+  analysis.load(fen);
   if (stack.at(-1) === 'view-editor') push('view-analysis');
   else resetTo('view-analysis');
-  analysis.load(fen);
 }
 
 $('engine-toggle').addEventListener('change', (e) => {
