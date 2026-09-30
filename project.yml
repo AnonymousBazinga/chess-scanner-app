@@ -73,5 +73,7 @@ schemes:
         ChessScanner: all
         ChessScannerUITests: [test]
     test:
-      targets:
-        - ChessScannerUITests
+      # The plan keeps each test's screen recording, not just failed ones.
+      testPlans:
+        - path: ChessScanner.xctestplan
+          defaultPlan: true

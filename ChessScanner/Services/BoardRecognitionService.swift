@@ -4,8 +4,6 @@ import OnnxRuntimeBindings
 /// What the recognizer read from a photo.
 struct RecognitionResult: Sendable {
     let fen: String
-    /// Squares the model was unsure about, so the editor can ask the user to check them.
-    let uncertainSquares: Set<Square>
 }
 
 @MainActor
@@ -78,10 +76,12 @@ final class BoardRecognizer: @unchecked Sendable {
     static let modelName = "chessquerieslite-vits-644-int8"
     static let inputSize = 644
     static let pieces = Array(".PNBRQKpnbrqk")
-    /// Below this mean confidence the photo most likely has no readable board.
+    /// Below this mean confidence the photo most likely has no readable board. Every
+    /// real board in the CVChess benchmark scored at least 0.975.
+    ///
+    /// Per-square confidence is not used to flag doubtful squares: on CVChess even a
+    /// 0.999 cut-off caught only half the errors, with most flags on correct squares.
     static let minimumBoardConfidence: Float = 0.5
-    /// Squares below this confidence are flagged for the user to double-check.
-    static let uncertainSquareConfidence: Float = 0.8
 
     private let session: ORTSession
     private let inputName: String
@@ -179,7 +179,6 @@ final class BoardRecognizer: @unchecked Sendable {
             throw RecognitionError.inferenceFailed
         }
         var board = [Character](repeating: ".", count: 64)
-        var uncertain: Set<Square> = []
         var confidenceSum: Float = 0
 
         logits.withUnsafeBytes { raw in
@@ -193,17 +192,13 @@ final class BoardRecognizer: @unchecked Sendable {
                 let confidence = exps[best] / total
                 confidenceSum += confidence
                 board[square] = pieces[best]
-                if confidence < uncertainSquareConfidence {
-                    // FEN order: index 0 is a8.
-                    uncertain.insert(Square(square % 8, 7 - square / 8))
-                }
             }
         }
 
         guard confidenceSum / 64 >= minimumBoardConfidence else {
             throw RecognitionError.noBoardFound
         }
-        return RecognitionResult(fen: fen(from: board), uncertainSquares: uncertain)
+        return RecognitionResult(fen: fen(from: board))
     }
 
     /// Board in FEN order to a full FEN, granting only castling rights whose king

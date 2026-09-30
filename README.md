@@ -4,8 +4,7 @@ An iOS app that turns a photo of a chess board into a position you can analyze w
 
 1. **Scan**: take a photo of a physical board (or pick one from Photos). The on-device
    [ChessQueries Lite](https://github.com/JSeytre/chessqueries) model (ViT-S, int8 ONNX, run
-   with ONNX Runtime) reads the pieces from the whole photo, no cropping needed. Squares it is
-   unsure about are outlined in the editor.
+   with ONNX Runtime) reads the pieces from the whole photo, no cropping needed.
 2. **Review**: fix any misread squares in the editor. Pick a piece from the palette and tap
    squares, drag pieces to move them (or off the board to remove them), and set the side to
    move and castling rights. Illegal positions are flagged before analysis.

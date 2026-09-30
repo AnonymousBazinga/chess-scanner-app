@@ -32,7 +32,6 @@ enum BoardColors {
     static let hint = Color.black.opacity(0.16)
     static let arrow = Color(hex: "F2A93B")
     static let check = Color(hex: "FF3B30")
-    static let uncertain = Color(hex: "F2B544")
 }
 
 extension Color {

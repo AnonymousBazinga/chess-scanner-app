@@ -10,7 +10,11 @@ struct MoveHistoryEntry {
 
 @MainActor
 class AnalysisViewModel: ObservableObject {
-    @Published var currentPosition: Position
+    @Published var currentPosition: Position {
+        didSet { legalMoveCount = currentPosition.legalMoves().count }
+    }
+    /// Cached: views re-render on every engine update, and move generation isn't free.
+    private(set) var legalMoveCount = 0
     @Published var selectedSquare: Square?
     @Published var legalMoveSquares: [Square] = []
     @Published var flipped: Bool = false
@@ -36,6 +40,7 @@ class AnalysisViewModel: ObservableObject {
         self.initialFEN = fen
         self.currentPosition = Position(fen: fen)
         self.startPosition = Position(fen: fen)
+        self.legalMoveCount = self.currentPosition.legalMoves().count
 
         // Forward engine's objectWillChange to our own so views observe engine state
         engineCancellable = engine.objectWillChange.sink { [weak self] _ in

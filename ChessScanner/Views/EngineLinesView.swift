@@ -7,9 +7,11 @@ struct EngineLinesView: View {
     let depth: Int
     var errorMessage: String?
     var engineOn: Binding<Bool>
+    /// How many lines the position can have: fewer than 3 when there are fewer legal moves.
+    var maxLines = 3
     var onLineTap: ((EngineLine) -> Void)?
 
-    private let rowCount = 3
+    private var rowCount: Int { max(1, min(3, maxLines)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -69,6 +71,8 @@ struct EngineLinesView: View {
     private func row(at index: Int) -> some View {
         if let message = errorMessage, index == 0 {
             placeholderRow(text: message, icon: "exclamationmark.triangle.fill", color: Theme.warning)
+        } else if maxLines == 0 {
+            placeholderRow(text: "No legal moves", icon: "flag.checkered", color: Theme.textSecondary)
         } else if !engineOn.wrappedValue {
             placeholderRow(text: index == 0 ? "Engine is off" : "", icon: nil, color: Theme.textTertiary)
         } else if index < lines.count {

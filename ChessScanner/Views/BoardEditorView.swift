@@ -18,16 +18,12 @@ struct BoardEditView: View {
     @State private var showPhoto = false
     @State private var navigateToAnalysis = false
     @State private var finalFEN = ""
-    /// Squares the recognizer was unsure about; each clears once the user edits it.
-    @State private var uncertain: Set<Square>
 
     let initialFEN: String
     var photo: UIImage?
     var onAnalyze: ((String) -> Void)?
 
-    init(initialFEN: String, photo: UIImage? = nil, uncertainSquares: Set<Square> = [],
-         onAnalyze: ((String) -> Void)? = nil) {
-        _uncertain = State(initialValue: uncertainSquares)
+    init(initialFEN: String, photo: UIImage? = nil, onAnalyze: ((String) -> Void)? = nil) {
         self.initialFEN = initialFEN
         self.photo = photo
         self.onAnalyze = onAnalyze
@@ -80,8 +76,7 @@ struct BoardEditView: View {
                         Label("Starting position", systemImage: "arrow.counterclockwise")
                     }
                     Button(role: .destructive) {
-                        uncertain = []
-                        edit { position.clearBoard() }
+                                        edit { position.clearBoard() }
                     } label: {
                         Label("Clear board", systemImage: "trash")
                     }
@@ -108,7 +103,6 @@ struct BoardEditView: View {
             position: position,
             flipped: flipped,
             markedSquares: position.illegalSquares,
-            uncertainSquares: uncertain,
             onSquareTap: handleTap,
             onDrop: handleDrop
         )
@@ -125,14 +119,11 @@ struct BoardEditView: View {
     /// same piece is already there). Otherwise taps do nothing; pieces are dragged.
     private func handleTap(_ square: Square) {
         guard let brush else { return }
-        uncertain.remove(square)
         let current = position.piece(at: square)
         edit { position.setPiece(current == brush ? nil : brush, at: square) }
     }
 
     private func handleDrop(from: Square, to: Square?) -> Bool {
-        uncertain.remove(from)
-        if let to { uncertain.remove(to) }
         guard let to else {
             // Dragged off the board: remove the piece.
             edit { position.setPiece(nil, at: from) }
@@ -212,7 +203,6 @@ struct BoardEditView: View {
                     .onEnded { value in
                         if trayDrag != nil {
                             if let square = boardSquare(at: value.location) {
-                                uncertain.remove(square)
                                 edit { position.setPiece(piece, at: square) }
                             }
                             trayDrag = nil
@@ -337,7 +327,6 @@ struct BoardEditView: View {
     }
 
     private func resetToStart() {
-        uncertain = []
         edit { position.loadFEN(Position.startFEN) }
         sideToMove = .white
         castling = position.castlingRights
@@ -392,15 +381,14 @@ struct BoardEditView: View {
         }
         .animation(Motion.snappy, value: issues.first)
         .animation(Motion.snappy, value: brush)
-        .animation(Motion.snappy, value: uncertain)
     }
 
     private var hintText: String {
         if let brush {
             return "Tap squares to place the \(brush.color.name.lowercased()) \(brush.type.fullName.lowercased()). Tap it again to stop."
         }
-        if !uncertain.isEmpty {
-            return "Check the \(uncertain.count) outlined square\(uncertain.count == 1 ? "" : "s"). The scan wasn't sure about them."
+        if photo != nil {
+            return "Compare with your photo and drag pieces to fix any mistakes."
         }
         return "Drag pieces onto the board. Drag them off to remove."
     }

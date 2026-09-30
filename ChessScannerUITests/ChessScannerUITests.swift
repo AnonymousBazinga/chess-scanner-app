@@ -60,7 +60,9 @@ final class ChessScannerUITests: XCTestCase {
         screenshot("04-analysis-first-lines")
 
         XCTAssertTrue(waitUntil(timeout: 60) { self.engineDepth() >= 12 }, "Engine depth stuck at \(engineDepth())")
-        XCTAssertTrue(waitUntil(timeout: 20) { lines.count >= 3 }, "Expected 3 engine lines, got \(lines.count)")
+        // A scanned position can have fewer than 3 legal moves; the view then shows
+        // only that many rows (checked on a normal position in the manual test).
+        XCTAssertGreaterThanOrEqual(lines.count, 1)
         attachText("engine-lines", (0..<lines.count).map { lines.element(boundBy: $0).label }.joined(separator: "\n"))
         let bar = element("eval.bar")
         XCTAssertTrue(bar.exists)
@@ -147,6 +149,7 @@ final class ChessScannerUITests: XCTestCase {
 
         let lines = app.descendants(matching: .any).matching(identifier: "engine.line")
         XCTAssertTrue(lines.firstMatch.waitForExistence(timeout: 60), "No engine lines after moves")
+        XCTAssertTrue(waitUntil(timeout: 30) { lines.count == 3 }, "Expected 3 engine lines, got \(lines.count)")
         screenshot("14-analysis-after-e4-e5")
 
         // Navigate back and forward through the moves.

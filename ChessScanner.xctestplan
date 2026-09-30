@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "5C2C1A2E-0B1C-4F7E-9C3B-6A0E2E6F7D11",
+      "name" : "Default",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "systemAttachmentLifetime" : "keepAlways",
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:ChessScanner.xcodeproj",
+      "identifier" : "8A088E27908F6A3C1E5DED4A",
+      "name" : "ChessScanner"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:ChessScanner.xcodeproj",
+        "identifier" : "0412BBBC612ED344A52F0473",
+        "name" : "ChessScannerUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

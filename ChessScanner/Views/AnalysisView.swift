@@ -16,6 +16,7 @@ struct AnalysisView: View {
                 depth: viewModel.engine.currentDepth,
                 errorMessage: viewModel.engine.setupError,
                 engineOn: $viewModel.engineEnabled,
+                maxLines: viewModel.legalMoveCount,
                 onLineTap: { viewModel.playLine($0) }
             )
 

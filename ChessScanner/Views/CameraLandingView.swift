@@ -11,7 +11,6 @@ struct CameraLandingView: View {
     @State private var scanningImage: UIImage?
     @State private var isProcessing = false
     @State private var detectedFEN: String?
-    @State private var uncertainSquares: Set<Square> = []
     @State private var editorPhoto: UIImage?
     @State private var navigateToEditor = false
     @State private var navigateToAnalysis = false
@@ -69,8 +68,7 @@ struct CameraLandingView: View {
             .presentationDragIndicator(.visible)
         }
         .navigationDestination(isPresented: $navigateToEditor) {
-            BoardEditView(initialFEN: detectedFEN ?? Position.startFEN, photo: editorPhoto,
-                          uncertainSquares: uncertainSquares) { fen in
+            BoardEditView(initialFEN: detectedFEN ?? Position.startFEN, photo: editorPhoto) { fen in
                 historyStore.addItem(fen: fen)
                 analysisStartFEN = fen
                 navigateToAnalysis = true
@@ -220,7 +218,6 @@ struct CameraLandingView: View {
 
             sideButton(icon: "square.grid.3x3.square", title: "Set up", id: "scan.manual") {
                 detectedFEN = Position.startFEN
-                uncertainSquares = []
                 editorPhoto = nil
                 navigateToEditor = true
             }
@@ -286,7 +283,6 @@ struct CameraLandingView: View {
         if let result = recognitionService.result {
             Haptics.success()
             detectedFEN = result.fen
-            uncertainSquares = result.uncertainSquares
             navigateToEditor = true
             // Clear the frozen frame once the editor has covered it.
             Task {
