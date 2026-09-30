@@ -1,0 +1,11 @@
+{
+  "name": "Chess Scanner",
+  "short_name": "Chess Scanner",
+  "description": "Take a photo of a chessboard and analyze it with Stockfish.",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#161512",
+  "theme_color": "#161512",
+  "icons": [{ "src": "icon-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }]
+}
