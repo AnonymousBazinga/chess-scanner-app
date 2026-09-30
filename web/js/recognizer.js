@@ -6,8 +6,8 @@
 //
 // License: the model weights are PolyForm Noncommercial 1.0.0 (Joël Seytre).
 
-const ORT_VERSION = '1.24.2';
-const ORT_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+// ONNX Runtime Web 1.24.2, served with the site (vendor/ort).
+const ORT_BASE = new URL('../vendor/ort/', import.meta.url).href;
 // Pinned to the upstream commit that ships this export; same file the app benchmarks.
 export const MODEL_URL = 'https://huggingface.co/joelseytre/chessqueries/resolve/5d29dfc5b289a31c80018154c797ebe4f0713321/chessquerieslite-vits-644-int8.onnx';
 const MODEL_BYTES = 36028599;
