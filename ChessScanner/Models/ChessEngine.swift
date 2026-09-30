@@ -46,11 +46,13 @@ struct EngineLine: Identifiable {
 @MainActor
 class ChessEngine: ObservableObject {
     @Published var isAnalyzing = false
+    /// Depth of the lines currently shown (the last fully completed iteration).
     @Published var currentDepth: Int = 0
     @Published var lines: [EngineLine] = []
-    @Published var nodesSearched: Int = 0
     @Published var engineReady = false
-    @Published var nps: Int = 0
+
+    /// Searches stop here: deep enough for analysis, and saves battery.
+    static let maxDepth = 24
 
     let multiPV: Int
 
@@ -110,6 +112,9 @@ class ChessEngine: ObservableObject {
 
             await sfEngine.send(command: .setoption(id: "EvalFile", value: big.path))
             await sfEngine.send(command: .setoption(id: "EvalFileSmall", value: small.path))
+            await sfEngine.send(command: .setoption(id: "Hash", value: "128"))
+            // Loads the networks now rather than on the first `go`.
+            await sfEngine.send(command: .isready)
             engine = sfEngine
             engineReady = true
             return sfEngine
@@ -128,17 +133,38 @@ class ChessEngine: ObservableObject {
     private var commandChain: Task<Void, Never>?
     /// The screen that started the current search; only it may pause it.
     private var owner: ObjectIdentifier?
+    /// Lines per completed depth that make a full update (fewer when few legal moves).
+    private var expectedLines = 3
+    private var lastPublish = Date.distantPast
+    /// Best completed result per position, so revisiting a move shows lines instantly.
+    private var cache: [String: (depth: Int, lines: [EngineLine])] = [:]
 
     func startAnalysis(position: Position, owner: AnyObject? = nil) {
         self.owner = owner.map(ObjectIdentifier.init)
         currentPosition = position
         pendingLines = [:]
-        lines = []
-        currentDepth = 0
-        nodesSearched = 0
-        nps = 0
-        isAnalyzing = true
+        let legal = position.legalMoves().count
+        expectedLines = max(1, min(multiPV, legal))
+        lastPublish = .distantPast
+        guard legal > 0 else {
+            // Checkmate or stalemate: nothing to search.
+            lines = []
+            currentDepth = 0
+            isAnalyzing = false
+            return
+        }
 
+        let key = Self.cacheKey(position.fen)
+        if let cached = cache[key] {
+            lines = cached.lines
+            currentDepth = cached.depth
+        } else {
+            lines = []
+            currentDepth = 0
+        }
+        isAnalyzing = currentDepth < Self.maxDepth
+
+        guard isAnalyzing else { return }
         let fen = position.fen
         let previous = commandChain
         commandChain = Task {
@@ -150,7 +176,7 @@ class ChessEngine: ObservableObject {
             // Stockfish finishes the previous search before starting this `go`.
             await engine.send(command: .stop)
             await engine.send(command: .position(.fen(fen)))
-            await engine.send(command: .go(infinite: true))
+            await engine.send(command: .go(depth: Self.maxDepth))
         }
     }
 
@@ -162,6 +188,11 @@ class ChessEngine: ObservableObject {
             await previous?.value
             await engine?.send(command: .stop)
         }
+    }
+
+    /// Positions repeat via different move orders; ignore the move counters.
+    private static func cacheKey(_ fen: String) -> String {
+        fen.split(separator: " ").prefix(4).joined(separator: " ")
     }
 
     // MARK: - Response Handling
@@ -176,78 +207,72 @@ class ChessEngine: ObservableObject {
 
         case let .bestmove(move, _):
             // A superseded search's bestmove is usually illegal here; ignore it.
-            if currentPosition?.moveFromUCI(move) != nil { isAnalyzing = false }
+            if currentPosition?.moveFromUCI(move) != nil {
+                publishPending(force: true)
+                isAnalyzing = false
+            }
 
         default:
             break
         }
     }
 
+    /// Collects lines and publishes them only when a depth is complete for every
+    /// line, the way Lichess and Chess.com do, so the ranking doesn't flicker while
+    /// Stockfish is mid-iteration.
     private func processInfo(_ info: EngineResponse.Info) {
-        guard let depth = info.depth else { return }
+        guard let depth = info.depth, let position = currentPosition else { return }
 
-        // Update nodes
-        if let n = info.nodes {
-            nodesSearched = n
-        }
-        if let n = info.nps {
-            nps = n
-        }
+        // Aspiration-window results are provisional bounds, not real scores.
+        if info.score?.lowerbound == true || info.score?.upperbound == true { return }
 
-        // Only process lines with a PV that belongs to the current position.
-        // ChessKitEngine delivers each output line in its own task, so output
-        // from a superseded search can arrive after a new one starts, in any
-        // order; its first move is almost never legal in the new position.
+        // Only accept lines that belong to the current position. ChessKitEngine
+        // delivers each output line in its own task, so output from a superseded
+        // search can arrive after a new one starts; its first move is almost never
+        // legal in the new position.
         guard let pvMoves = info.pv, let first = pvMoves.first,
-              currentPosition?.moveFromUCI(first) != nil else { return }
+              position.moveFromUCI(first) != nil else { return }
 
-        let pvIndex = info.multipv ?? 1
-
-        // Calculate score from engine's perspective (engine reports from side-to-move perspective)
-        var scoreCp: Int = 0
-        var mateIn: Int? = nil
-
+        var scoreCp = 0
+        var mateIn: Int?
         if let score = info.score {
-            if let cp = score.cp {
-                // Convert from side-to-move perspective to white's perspective
-                scoreCp = currentPosition?.sideToMove == .black ? -Int(cp) : Int(cp)
-            }
-            if let mate = score.mate {
-                mateIn = currentPosition?.sideToMove == .black ? -mate : mate
-            }
+            // Stockfish scores from the side to move; show White's perspective.
+            let sign = position.sideToMove == .black ? -1 : 1
+            if let cp = score.cp { scoreCp = sign * Int(cp) }
+            if let mate = score.mate { mateIn = sign * mate }
         }
 
-        // Convert UCI PV to SAN
-        let sanMoves: [String]
-        if let pos = currentPosition {
-            sanMoves = pos.uciSequenceToSAN(Array(pvMoves.prefix(12))).split(separator: " ").map(String.init)
-        } else {
-            sanMoves = pvMoves
+        let index = info.multipv ?? 1
+        pendingLines[index] = EngineLine(
+            id: index, score: scoreCp, mate: mateIn, depth: depth,
+            pv: pvMoves, pvSAN: [], nodes: info.nodes ?? 0,
+            startMoveNumber: position.fullMoveNumber,
+            startsWithBlack: position.sideToMove == .black)
+
+        if index == expectedLines { publishPending(force: false) }
+    }
+
+    private func publishPending(force: Bool) {
+        guard let position = currentPosition else { return }
+        let snapshot = (1...expectedLines).compactMap { pendingLines[$0] }
+        guard let depth = snapshot.first?.depth,
+              snapshot.count == expectedLines,
+              snapshot.allSatisfy({ $0.depth == depth }),
+              depth > currentDepth || force else { return }
+
+        // Early depths arrive within milliseconds; don't redraw for each one.
+        let now = Date()
+        guard force || depth >= 12 || now.timeIntervalSince(lastPublish) > 0.25 else { return }
+        lastPublish = now
+
+        // SAN conversion is the expensive part, so it only runs for published lines.
+        lines = snapshot.map { line in
+            var line = line
+            line.pvSAN = position.uciSequenceToSAN(Array(line.pv.prefix(10)))
+                .split(separator: " ").map(String.init)
+            return line
         }
-
-        let line = EngineLine(
-            id: pvIndex,
-            score: scoreCp,
-            mate: mateIn,
-            depth: depth,
-            pv: pvMoves,
-            pvSAN: sanMoves,
-            nodes: nodesSearched,
-            startMoveNumber: currentPosition?.fullMoveNumber ?? 1,
-            startsWithBlack: currentPosition?.sideToMove == .black
-        )
-
-        pendingLines[pvIndex] = line
-
-        // Update current depth
-        if depth > currentDepth {
-            currentDepth = depth
-        }
-
-        // Stockfish ranks MultiPV lines best-first for the side to move; sorting by
-        // White's score would list Black's best line last when Black is to move.
-        let sortedLines = pendingLines.values.sorted { $0.id < $1.id }
-
-        lines = sortedLines
+        currentDepth = max(currentDepth, depth)
+        cache[Self.cacheKey(position.fen)] = (currentDepth, lines)
     }
 }

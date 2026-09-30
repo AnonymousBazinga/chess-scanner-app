@@ -104,9 +104,14 @@ struct PrimaryButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 if let icon { Image(systemName: icon).font(.body.weight(.semibold)) }
-                Text(title).font(.body.weight(.semibold))
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .contentTransition(.opacity)
             }
-            .foregroundStyle(enabled ? Color.white : Theme.textTertiary)
+            .padding(.horizontal, 12)
+            .foregroundStyle(enabled ? Color.white : Theme.textSecondary)
             .frame(maxWidth: .infinity)
             .frame(height: 54)
             .background(

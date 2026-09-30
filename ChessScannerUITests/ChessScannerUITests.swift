@@ -49,7 +49,7 @@ final class ChessScannerUITests: XCTestCase {
         // Fix an illegal scan the way a user would: erase pawns on the back ranks.
         fixIllegalScan(placement)
         screenshot("03-editor-fixed")
-        XCTAssertFalse(element("editor.issue").exists, "Position still invalid: \(element("editor.issue").label)")
+        XCTAssertNil(editorIssue(), "Position still invalid: \(editorIssue() ?? "")")
 
         app.buttons["editor.analyze"].tap()
         XCTAssertTrue(app.navigationBars["Analysis"].waitForExistence(timeout: 10), "Analysis screen did not open")
@@ -117,12 +117,13 @@ final class ChessScannerUITests: XCTestCase {
 
         // Validation: clearing the board blocks analysis until kings are placed.
         editorMenu("Clear board")
-        XCTAssertTrue(element("editor.issue").waitForExistence(timeout: 3), "No validation message on empty board")
+        XCTAssertTrue(waitUntil(timeout: 3) { self.editorIssue() != nil }, "No validation message on empty board")
+        XCTAssertEqual(editorIssue(), "Add a white king")
         XCTAssertFalse(app.buttons["editor.analyze"].isEnabled)
         screenshot("13-editor-invalid")
 
         editorMenu("Starting position")
-        XCTAssertTrue(waitUntil(timeout: 3) { !self.element("editor.issue").exists })
+        XCTAssertTrue(waitUntil(timeout: 3) { self.editorIssue() == nil })
         XCTAssertTrue(app.buttons["editor.analyze"].isEnabled)
 
         // Move a piece in the editor by dragging (knight g1 → f3).
@@ -177,7 +178,7 @@ final class ChessScannerUITests: XCTestCase {
         app.buttons["palette.wK"].tap(); square("e1").tap()
         app.buttons["palette.bK"].tap(); square("h8").tap()
         app.buttons["palette.wP"].tap(); square("a7").tap()
-        XCTAssertTrue(waitUntil(timeout: 3) { !self.element("editor.issue").exists }, "Position should be valid")
+        XCTAssertTrue(waitUntil(timeout: 3) { self.editorIssue() == nil }, "Position should be valid")
         app.buttons["editor.analyze"].tap()
         XCTAssertTrue(app.navigationBars["Analysis"].waitForExistence(timeout: 10))
 
@@ -237,6 +238,12 @@ final class ChessScannerUITests: XCTestCase {
         app.descendants(matching: .any)[id].firstMatch
     }
 
+    /// Why the position can't be analyzed: the disabled Analyze button shows the reason.
+    private func editorIssue() -> String? {
+        let button = app.buttons["editor.analyze"]
+        return button.exists && !button.isEnabled ? button.label : nil
+    }
+
     private func square(_ name: String) -> XCUIElement {
         element("square.\(name)")
     }
@@ -264,7 +271,7 @@ final class ChessScannerUITests: XCTestCase {
 
     /// Erases pawns on the first/last rank and extra kings so the scan becomes analyzable.
     private func fixIllegalScan(_ placement: String) {
-        guard element("editor.issue").exists else { return }
+        guard editorIssue() != nil else { return }
         let board = expand(placement)
         var erase: [String] = []
         var kings: [Character: Int] = [:]
@@ -280,12 +287,12 @@ final class ChessScannerUITests: XCTestCase {
         for name in erase { dragOffBoard(name) }
         if !kings.keys.contains("K") { app.buttons["palette.wK"].tap(); square(firstEmpty(board)).tap() }
         if !kings.keys.contains("k") { app.buttons["palette.bK"].tap(); square(firstEmpty(expand(readBoardPlacement()))).tap() }
-        if element("editor.issue").exists, element("editor.issue").label.contains("move") {
+        if editorIssue()?.contains("move") == true {
             let black = app.buttons["editor.side.black"]
             black.isSelected ? app.buttons["editor.side.white"].tap() : black.tap()
         }
-        if element("editor.issue").exists {
-            attachText("unfixable-scan", element("editor.issue").label)
+        if let issue = editorIssue() {
+            attachText("unfixable-scan", issue)
             editorMenu("Starting position")
         }
     }

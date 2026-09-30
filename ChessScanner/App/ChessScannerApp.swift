@@ -26,6 +26,8 @@ struct ChessScannerApp: App {
                 }
             }
             .preferredColorScheme(.dark)
+            // Start Stockfish and load its networks while the user frames the board.
+            .task { await ChessEngine.shared.initialize() }
         }
     }
 }

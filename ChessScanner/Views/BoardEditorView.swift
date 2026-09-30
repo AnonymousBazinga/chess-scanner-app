@@ -12,7 +12,6 @@ struct BoardEditView: View {
     @State private var trayDragPoint: CGPoint = .zero
     @State private var boardFrame: CGRect = .zero
     @State private var sideToMove: PieceColor
-    @State private var castling: CastlingRights
     @State private var flipped = false
     @State private var undoStack: [String] = []
     @State private var showPhoto = false
@@ -30,7 +29,6 @@ struct BoardEditView: View {
         let start = Position(fen: initialFEN)
         _position = StateObject(wrappedValue: start)
         _sideToMove = State(initialValue: start.sideToMove)
-        _castling = State(initialValue: start.castlingRights)
     }
 
     private var issues: [String] { position.validationIssues(sideToMove: sideToMove) }
@@ -234,33 +232,17 @@ struct BoardEditView: View {
     // MARK: - Settings
 
     private var settings: some View {
-        let possible = position.possibleCastling()
-        return VStack(spacing: 10) {
-            HStack {
-                Text("To move")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer()
-                HStack(spacing: 4) {
-                    sideButton(.white)
-                    sideButton(.black)
-                }
-                .padding(3)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        HStack {
+            Text("To move")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer()
+            HStack(spacing: 4) {
+                sideButton(.white)
+                sideButton(.black)
             }
-
-            Rectangle().fill(Theme.stroke).frame(height: 1)
-
-            HStack(spacing: 6) {
-                Text("Castling")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer(minLength: 4)
-                castlingChip("O-O", color: .white, kingside: true, possible: possible)
-                castlingChip("O-O-O", color: .white, kingside: false, possible: possible)
-                castlingChip("O-O", color: .black, kingside: true, possible: possible)
-                castlingChip("O-O-O", color: .black, kingside: false, possible: possible)
-            }
+            .padding(3)
+            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -291,32 +273,6 @@ struct BoardEditView: View {
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
-    private func castlingChip(_ title: String, color: PieceColor, kingside: Bool, possible: CastlingRights) -> some View {
-        let allowed = possible.allows(color: color, kingside: kingside)
-        let isOn = allowed && castling.allows(color: color, kingside: kingside)
-        return Button {
-            Haptics.tap()
-            castling.set(color: color, kingside: kingside, to: !isOn)
-        } label: {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(color == .white ? Theme.evalWhite : Theme.evalBlack)
-                    .overlay(Circle().strokeBorder(Color.white.opacity(0.35)))
-                    .frame(width: 7, height: 7)
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-            }
-            .foregroundStyle(isOn ? Color.white : (allowed ? Theme.textSecondary : Theme.textTertiary.opacity(0.6)))
-            .frame(width: kingside ? 50 : 62, height: 30)
-            .background(isOn ? Theme.accent : Theme.surfaceRaised,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .opacity(allowed ? 1 : 0.6)
-        }
-        .buttonStyle(PressableStyle())
-        .disabled(!allowed)
-        .accessibilityIdentifier("editor.castle.\(color.name.lowercased()).\(kingside ? "king" : "queen")")
-    }
-
     // MARK: - Actions
 
     private func undo() {
@@ -329,50 +285,37 @@ struct BoardEditView: View {
     private func resetToStart() {
         edit { position.loadFEN(Position.startFEN) }
         sideToMove = .white
-        castling = position.castlingRights
     }
 
     // MARK: - Analyze
 
     private var analyzeBar: some View {
-        VStack(spacing: 8) {
-            if let issue = issues.first {
-                Pill(text: issue, icon: "exclamationmark.triangle.fill")
-                    .accessibilityIdentifier("editor.issue")
-                    .transition(.opacity)
-            } else {
-                Text(hintText)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .frame(minHeight: 33)
-                    .transition(.opacity)
-            }
-            HStack(spacing: 10) {
-                if let photo {
-                    Button {
-                        showPhoto = true
-                    } label: {
-                        Image(uiImage: photo)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 54, height: 54)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.stroke))
-                    }
-                    .buttonStyle(PressableStyle())
-                    .accessibilityLabel("Compare with photo")
-                    .accessibilityIdentifier("editor.photo")
+        HStack(spacing: 10) {
+            if let photo {
+                Button {
+                    showPhoto = true
+                } label: {
+                    Image(uiImage: photo)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 54, height: 54)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.stroke))
                 }
-                PrimaryButton(title: "Analyze", icon: "bolt.fill", enabled: issues.isEmpty) {
-                    analyze()
-                }
-                .accessibilityIdentifier("editor.analyze")
+                .buttonStyle(PressableStyle())
+                .accessibilityLabel("Compare with photo")
+                .accessibilityIdentifier("editor.photo")
             }
+            // An invalid position turns the button into the reason it can't be analyzed.
+            PrimaryButton(title: issues.first ?? "Analyze",
+                          icon: issues.isEmpty ? "bolt.fill" : nil,
+                          enabled: issues.isEmpty) {
+                analyze()
+            }
+            .accessibilityIdentifier("editor.analyze")
         }
         .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.top, 10)
         .padding(.bottom, 4)
         .background {
             Theme.background
@@ -380,28 +323,13 @@ struct BoardEditView: View {
                 .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
         }
         .animation(Motion.snappy, value: issues.first)
-        .animation(Motion.snappy, value: brush)
-    }
-
-    private var hintText: String {
-        if let brush {
-            return "Tap squares to place the \(brush.color.name.lowercased()) \(brush.type.fullName.lowercased()). Tap it again to stop."
-        }
-        if photo != nil {
-            return "Compare with your photo and drag pieces to fix any mistakes."
-        }
-        return "Drag pieces onto the board. Drag them off to remove."
     }
 
     private func analyze() {
-        let possible = position.possibleCastling()
         let result = Position(fen: position.fen)
         result.sideToMove = sideToMove
-        result.castlingRights = CastlingRights(
-            whiteKingside: castling.whiteKingside && possible.whiteKingside,
-            whiteQueenside: castling.whiteQueenside && possible.whiteQueenside,
-            blackKingside: castling.blackKingside && possible.blackKingside,
-            blackQueenside: castling.blackQueenside && possible.blackQueenside)
+        // Like Chess.com, castling is allowed whenever king and rook are on their home squares.
+        result.castlingRights = position.possibleCastling()
         result.enPassantSquare = nil
         result.halfMoveClock = 0
         result.fullMoveNumber = 1

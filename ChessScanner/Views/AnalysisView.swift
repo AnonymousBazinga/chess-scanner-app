@@ -190,10 +190,7 @@ struct AnalysisView: View {
                 Pill(text: status, icon: "flag.checkered", color: Theme.accent)
                     .frame(maxWidth: .infinity)
             } else if viewModel.moveHistory.isEmpty {
-                Text("Drag or tap a piece to explore moves")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textTertiary)
-                    .frame(maxWidth: .infinity)
+                Color.clear
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {

@@ -7,21 +7,21 @@ extension Position {
         for color in [PieceColor.white, .black] {
             // `pieceCounts` leaves kings out, so count them directly.
             let kings = board.joined().filter { $0 == Piece(type: .king, color: color) }.count
-            if kings == 0 { issues.append("\(color.name) needs a king") }
-            if kings > 1 { issues.append("\(color.name) has \(kings) kings") }
+            if kings == 0 { issues.append("Add a \(color.name.lowercased()) king") }
+            if kings > 1 { issues.append("Too many \(color.name.lowercased()) kings") }
             let pawns = pieceCounts(for: color)[.pawn] ?? 0
-            if pawns > 8 { issues.append("\(color.name) has more than 8 pawns") }
+            if pawns > 8 { issues.append("Too many \(color.name.lowercased()) pawns") }
             let total = pieceCounts(for: color).values.reduce(0, +) + kings
-            if total > 16 { issues.append("\(color.name) has more than 16 pieces") }
+            if total > 16 { issues.append("Too many \(color.name.lowercased()) pieces") }
         }
         for file in 0..<8 {
             for rank in [0, 7] where board[rank][file]?.type == .pawn {
-                issues.append("Pawns can't be on the first or last rank")
+                issues.append("Pawns can't be on the back rank")
                 return issues
             }
         }
         if issues.isEmpty, isInCheck(color: sideToMove.opposite) {
-            issues.append("\(sideToMove.opposite.name) is in check but it's \(sideToMove.name)'s move")
+            issues.append("\(sideToMove.opposite.name) is in check · set \(sideToMove.opposite.name) to move")
         }
         return issues
     }

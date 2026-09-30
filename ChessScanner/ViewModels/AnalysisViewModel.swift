@@ -11,10 +11,11 @@ struct MoveHistoryEntry {
 @MainActor
 class AnalysisViewModel: ObservableObject {
     @Published var currentPosition: Position {
-        didSet { legalMoveCount = currentPosition.legalMoves().count }
+        didSet { refreshPositionState() }
     }
-    /// Cached: views re-render on every engine update, and move generation isn't free.
+    /// Cached per position: views re-render on engine updates, and move generation isn't free.
     private(set) var legalMoveCount = 0
+    private(set) var statusText: String?
     @Published var selectedSquare: Square?
     @Published var legalMoveSquares: [Square] = []
     @Published var flipped: Bool = false
@@ -40,7 +41,7 @@ class AnalysisViewModel: ObservableObject {
         self.initialFEN = fen
         self.currentPosition = Position(fen: fen)
         self.startPosition = Position(fen: fen)
-        self.legalMoveCount = self.currentPosition.legalMoves().count
+        refreshPositionState()
 
         // Forward engine's objectWillChange to our own so views observe engine state
         engineCancellable = engine.objectWillChange.sink { [weak self] _ in
@@ -61,18 +62,24 @@ class AnalysisViewModel: ObservableObject {
 
     /// Arrow for the engine's best move, as Chess.com and Lichess show.
     var bestMoveArrows: [BoardArrow] {
-        guard engineEnabled, let uci = engine.lines.first?.pv.first, uci.count >= 4,
+        // Wait for a settled search so the arrow doesn't flicker between early guesses.
+        guard engineEnabled, engine.currentDepth >= 10,
+              let uci = engine.lines.first?.pv.first, uci.count >= 4,
               let from = Square.fromAlgebraic(String(uci.prefix(2))),
               let to = Square.fromAlgebraic(String(uci.dropFirst(2).prefix(2))) else { return [] }
         return [BoardArrow(from: from, to: to)]
     }
 
-    var statusText: String? {
-        if currentPosition.isCheckmate {
-            return "Checkmate · \(currentPosition.sideToMove.opposite.name) wins"
+    private func refreshPositionState() {
+        let moves = currentPosition.legalMoves().count
+        legalMoveCount = moves
+        if moves == 0 {
+            statusText = currentPosition.isInCheck(color: currentPosition.sideToMove)
+                ? "Checkmate · \(currentPosition.sideToMove.opposite.name) wins"
+                : "Stalemate"
+        } else {
+            statusText = nil
         }
-        if currentPosition.isStalemate { return "Stalemate" }
-        return nil
     }
 
     var canGoBack: Bool { currentMoveIndex >= 0 }
