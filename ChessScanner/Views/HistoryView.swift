@@ -15,6 +15,18 @@ struct HistoryView: View {
                 list
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            NavigationLink {
+                AboutView()
+            } label: {
+                Text("About & acknowledgements")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .accessibilityIdentifier("history.about")
+        }
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)

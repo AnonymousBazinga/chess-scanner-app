@@ -44,6 +44,12 @@ enum UITestHooks {
         return ProcessInfo.processInfo.environment["UITEST_SCAN_IMAGE"]
     }
 
+    /// Position to open the editor on at launch, used for App Store screenshots.
+    static var editorFEN: String? {
+        guard isUITest else { return nil }
+        return ProcessInfo.processInfo.environment["UITEST_EDITOR_FEN"]
+    }
+
     @MainActor static func prepareForUITest() {
         if ProcessInfo.processInfo.environment["UITEST_RESET"] == "1" {
             UserDefaults.standard.removeObject(forKey: "chess_scan_history")

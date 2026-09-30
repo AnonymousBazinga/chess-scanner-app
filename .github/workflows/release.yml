@@ -1,0 +1,140 @@
+name: Release to App Store Connect
+
+# Builds a signed Release archive and uploads it to App Store Connect, where it
+# shows up in TestFlight and can be submitted for review.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   APPLE_TEAM_ID            10-character Team ID (developer.apple.com → Membership)
+#   ASC_KEY_ID               App Store Connect API key ID
+#   ASC_ISSUER_ID            App Store Connect API issuer ID
+#   ASC_PRIVATE_KEY          Contents of the AuthKey_XXXXXXXXXX.p8 file
+# Optional repository variable:
+#   BUNDLE_ID                Defaults to the identifier in project.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Marketing version (e.g. 1.0). Leave empty to use project.yml."
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - name: Check secrets
+        run: |
+          missing=""
+          for name in TEAM_ID ASC_KEY_ID ASC_ISSUER_ID; do  # names of env vars above
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          [ "$HAS_PRIVATE_KEY" = "true" ] || missing="$missing ASC_PRIVATE_KEY"
+          if [ -n "$missing" ]; then echo "::error::Missing secrets:$missing"; exit 1; fi
+        env:
+          HAS_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY != '' }}
+
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Fetch models
+        run: scripts/fetch_models.sh
+
+      - name: Generate Xcode project
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+
+      - name: Install API key
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+
+      - name: Archive
+        run: |
+          set -o pipefail
+          EXTRA=()
+          [ -n "${{ vars.BUNDLE_ID }}" ] && EXTRA+=(PRODUCT_BUNDLE_IDENTIFIER="${{ vars.BUNDLE_ID }}")
+          [ -n "${{ inputs.version }}" ] && EXTRA+=(MARKETING_VERSION="${{ inputs.version }}")
+          xcodebuild archive \
+            -project ChessScanner.xcodeproj -scheme ChessScanner -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/ChessScanner.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            "${EXTRA[@]}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | tee build-archive.log | grep -E "error:|warning: .*sign|\*\* ARCHIVE" || true
+          grep -q "\*\* ARCHIVE SUCCEEDED \*\*" build-archive.log
+
+      - name: Check the bundle
+        run: |
+          APP=$(ls -d build/ChessScanner.xcarchive/Products/Applications/*.app)
+          for f in PrivacyInfo.xcprivacy chessquerieslite-vits-644-int8.onnx nn-1111cefa1111.nnue nn-37f18f62d772.nnue; do
+            find "$APP" -name "$f" | grep -q . || { echo "::error::$f missing from the app bundle"; exit 1; }
+          done
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" -c "Print :CFBundleShortVersionString" \
+            -c "Print :CFBundleVersion" -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist"
+          du -sh "$APP"
+
+      - name: Upload to App Store Connect
+        run: |
+          set -o pipefail
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath build/ChessScanner.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | tee build-export.log | grep -E "error:|Upload|\*\* EXPORT" || true
+          grep -q "\*\* EXPORT SUCCEEDED \*\*" build-export.log
+          echo "Uploaded build ${{ github.run_number }}. It appears in App Store Connect → TestFlight after processing (usually 5–30 minutes)."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-logs
+          path: |
+            build-archive.log
+            build-export.log
+          retention-days: 14
+
+      - name: Remove API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"

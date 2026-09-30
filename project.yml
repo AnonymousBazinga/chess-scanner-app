@@ -36,10 +36,12 @@ targets:
       properties:
         CFBundleDisplayName: Chess Scanner
         UILaunchScreen: {}
-        NSCameraUsageDescription: "Chess Scanner needs camera access to photograph chess boards for position analysis."
-        NSPhotoLibraryUsageDescription: "Chess Scanner needs photo library access to import chess board images for analysis."
+        NSCameraUsageDescription: "The camera is used to photograph your chess board. Photos stay on your device."
+        NSPhotoLibraryUsageDescription: "Choose a photo of a chess board to analyze. Photos stay on your device."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Only Apple's built-in HTTPS is used, so no export compliance documents are needed.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.chessscanner.app
       PRODUCT_NAME: Chess Scanner

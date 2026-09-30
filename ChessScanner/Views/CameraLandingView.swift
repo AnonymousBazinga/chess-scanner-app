@@ -249,7 +249,13 @@ struct CameraLandingView: View {
     // MARK: - Scanning
 
     private func onAppear() {
-        if let path = UITestHooks.scanImagePath {
+        if let fen = UITestHooks.editorFEN, !didRunUITestScan {
+            // Store screenshots open the editor on a chosen position.
+            didRunUITestScan = true
+            detectedFEN = fen
+            editorPhoto = nil
+            navigateToEditor = true
+        } else if let path = UITestHooks.scanImagePath {
             // UI tests inject a board photo instead of using the camera.
             if !didRunUITestScan, let image = UIImage(contentsOfFile: path) {
                 didRunUITestScan = true
