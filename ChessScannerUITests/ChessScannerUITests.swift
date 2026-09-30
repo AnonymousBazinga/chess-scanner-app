@@ -215,7 +215,8 @@ final class ChessScannerUITests: XCTestCase {
 
     private func launch(scanning fixture: String? = nil) {
         app = XCUIApplication()
-        var env = ["UITEST": "1", "UITEST_RESET": "1"]
+        // Animations stay on so the session recording shows real transitions.
+        var env = ["UITEST": "1", "UITEST_RESET": "1", "UITEST_ANIMATIONS": "1"]
         if let fixture {
             let path = Self.fixturesDir.appendingPathComponent(fixture).path
             XCTAssertTrue(FileManager.default.fileExists(atPath: path), "Missing fixture \(path)")

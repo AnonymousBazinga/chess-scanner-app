@@ -52,8 +52,12 @@ for test in tests:
             shutil.copy(file, args.export / f"{test_name}--recording.mp4")
         elif file.suffix == ".png" and args.export:
             out = args.export / f"{test_name}--{Path(clean).stem}.jpg"
-            subprocess.run(["sips", "-Z", "900", "-s", "format", "jpeg", "-s", "formatOptions", "70",
-                            str(file), "--out", str(out)], capture_output=True)
+            done = subprocess.run(["sips", "-Z", "900", "-s", "format", "jpeg", "-s", "formatOptions", "70",
+                                   str(file), "--out", str(out)], capture_output=True, text=True)
+            if done.returncode != 0 or not out.exists():
+                # Never drop a screenshot: keep the original if conversion fails.
+                print(f"sips failed for {file.name}: {done.stderr.strip()}")
+                shutil.copy(file, out.with_suffix(".png"))
 
 if args.crash_dir and args.crash_dir.exists():
     for crash in sorted(args.crash_dir.glob("*Chess*"))[-2:]:

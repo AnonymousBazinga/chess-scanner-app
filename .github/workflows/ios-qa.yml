@@ -56,17 +56,29 @@ jobs:
           xcrun simctl addmedia "$UDID" ChessScannerUITests/Fixtures/*.png
           xcrun simctl list devices | grep "$UDID"
 
-      - name: Build and run UI tests
+      - name: Build and run UI tests (screen recorded)
         run: |
           set -o pipefail
-          mkdir -p build
-          xcodebuild test \
-            -project ChessScanner.xcodeproj \
-            -scheme ChessScanner \
+          mkdir -p build/qa
+          xcodebuild build-for-testing \
+            -project ChessScanner.xcodeproj -scheme ChessScanner \
+            -destination "id=$SIM_UDID" CODE_SIGNING_ALLOWED=NO \
+            | tee build/xcodebuild.log | grep -E "error:|\*\* (BUILD|TEST)" || true
+          # Record the simulator screen for the whole test session.
+          xcrun simctl io "$SIM_UDID" recordVideo --codec=h264 --force build/session.mov &
+          REC=$!
+          sleep 2
+          xcodebuild test-without-building \
+            -project ChessScanner.xcodeproj -scheme ChessScanner \
             -destination "id=$SIM_UDID" \
             -resultBundlePath build/QA.xcresult \
             CODE_SIGNING_ALLOWED=NO \
-            | tee build/xcodebuild.log | grep -E "error:|warning: unhandled|Test Case|Executed|\*\* (BUILD|TEST)|XCTAssert|failed" || true
+            | tee -a build/xcodebuild.log | grep -E "error:|Test Case|Executed|\*\* (BUILD|TEST)|XCTAssert|failed" || true
+          kill -INT $REC; wait $REC || true
+          # Shrink for sharing (built-in macOS converter).
+          avconvert --source build/session.mov --output build/qa/session-recording.mp4 \
+            --preset Preset960x540 --replace || cp build/session.mov build/qa/session-recording.mov
+          ls -lh build/qa
           grep -q "\*\* TEST SUCCEEDED \*\*" build/xcodebuild.log
 
       - name: Export screenshots and results
@@ -89,6 +101,7 @@ jobs:
           python3 qa/print_results.py build/qa --export build/qa-publish \
             --crash-dir ~/Library/Logs/DiagnosticReports || true
           mkdir -p build/qa-publish
+          cp build/qa/session-recording.* build/qa-publish/ 2>/dev/null || true
           cp build/qa/generated.project.pbxproj build/qa-publish/ 2>/dev/null || true
           # Publish to a hidden ref (not a branch) so results can be fetched with git.
           cd build/qa-publish
