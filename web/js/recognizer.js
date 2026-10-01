@@ -49,9 +49,20 @@ async function fetchModel(onProgress) {
     onProgress?.(1);
     return new Uint8Array(await cached.arrayBuffer());
   }
-  let res;
-  try { res = await fetch(MODEL_URL); } catch { res = null; }
-  if (!res?.ok) throw new Error("Couldn't download the scanner. Check your connection and try again.");
+  // Mobile connections drop; retry a couple of times before giving up.
+  let bytes = null;
+  for (let attempt = 0; attempt < 3 && !bytes; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    try { bytes = await download(onProgress); } catch { bytes = null; }
+  }
+  if (!bytes) throw new Error("Couldn't download the scanner. Check your connection and try again.");
+  try { await cache?.put(MODEL_URL, new Response(bytes)); } catch { /* quota: fine */ }
+  return bytes;
+}
+
+async function download(onProgress) {
+  const res = await fetch(MODEL_URL);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const total = Number(res.headers.get('content-length')) || MODEL_BYTES;
   const reader = res.body.getReader();
   const out = new Uint8Array(total);
@@ -63,9 +74,8 @@ async function fetchModel(onProgress) {
     received += value.length;
     onProgress?.(Math.min(1, received / total));
   }
-  const bytes = out.subarray(0, received);
-  try { await cache?.put(MODEL_URL, new Response(bytes)); } catch { /* quota: fine */ }
-  return bytes;
+  if (received < total) throw new Error('Incomplete download');
+  return out;
 }
 
 /**

@@ -108,6 +108,12 @@ async function waitDepth(min, timeout = 90000) {
   return (Date.now() - started) / 1000;
 }
 
+/** Waits for a view to become active and finish sliding in. */
+async function view(id, timeout = 30000) {
+  await page.waitForSelector(`#${id}[data-active]`, { timeout });
+  await page.waitForTimeout(450);
+}
+
 async function editorMenu(label) {
   await page.tap('[data-testid=editor-menu]');
   await page.locator('.menu-panel button', { hasText: label }).tap();
@@ -123,7 +129,7 @@ async function back() {
 await page.goto(BASE);
 
 await test('landing and camera', async () => {
-  await page.waitForSelector('#view-scan[data-active]');
+  await view('view-scan');
   if (process.env.CAMERA_Y4M) {
     await page.waitForSelector('#viewfinder.camera-on', { timeout: 10000 });
   }
@@ -135,7 +141,7 @@ await test('scan a photo from the library', async () => {
   await page.setInputFiles('#file-input', FIXTURE);
   await page.waitForSelector('#viewfinder.processing', { timeout: 5000 });
   await screenshot('scanning');
-  await page.waitForSelector('#view-editor[data-active]', { timeout: 240000 });
+  await view('view-editor', 240000);
   timings.firstScanSeconds = (Date.now() - started) / 1000;
   const placement = await readPlacement();
   fs.writeFileSync(path.join(OUT, 'recognized-placement.txt'), `${placement}\nexpected: ${FIXTURE_PLACEMENT}\n`);
@@ -155,7 +161,7 @@ await test('fix the scan and analyze', async () => {
   await page.waitForFunction(() => !document.querySelector('[data-testid=editor-analyze]').disabled);
   await screenshot('editor-fixed');
   await analyzeButton().tap();
-  await page.waitForSelector('#view-analysis[data-active]');
+  await view('view-analysis');
   timings.depth12Seconds = await waitDepth(12);
   timings.depth18Seconds = await waitDepth(18);
   await screenshot('analysis-scanned');
@@ -169,14 +175,14 @@ await test('history saves and reopens', async () => {
   assert((await rows.count()) === 1, `expected 1 history row, got ${await rows.count()}`);
   await screenshot('history');
   await rows.first().tap();
-  await page.waitForSelector('#view-analysis[data-active]');
+  await view('view-analysis');
   await page.waitForSelector('[data-testid=engine-line]');
   await back();
 });
 
 await test('manual setup and editing', async () => {
   await page.tap('[data-testid=scan-manual]');
-  await page.waitForSelector('#view-editor[data-active]');
+  await view('view-editor');
   assert((await readPlacement()) === 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', 'start position expected');
   assert(await page.locator('#btn-photo').isHidden(), 'no photo expected for manual setup');
   await screenshot('editor-start');
@@ -219,7 +225,7 @@ await test('manual setup and editing', async () => {
 
 await test('analysis: moves, lines, navigation, engine toggle', async () => {
   await analyzeButton().tap();
-  await page.waitForSelector('#view-analysis[data-active]');
+  await view('view-analysis');
   const lines = page.locator('[data-testid=engine-line]:not(.placeholder)');
   await lines.first().waitFor({ timeout: 60000 });
 
@@ -261,7 +267,7 @@ await test('analysis: moves, lines, navigation, engine toggle', async () => {
   await page.tap('[data-testid=analysis-flip]');
 
   // Open-in links carry the current position.
-  const fen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
+  const fen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
   const lichess = await page.getAttribute('[data-testid=open-lichess]', 'href');
   const chesscom = await page.getAttribute('[data-testid=open-chesscom]', 'href');
   assert(lichess === `https://lichess.org/analysis/${fen.replace(/ /g, '_')}`, `lichess link: ${lichess}`);
@@ -276,9 +282,9 @@ await test('analysis: moves, lines, navigation, engine toggle', async () => {
 
 await test('promotion', async () => {
   await page.goto(`${BASE}?fen=${encodeURIComponent('7k/P7/8/8/8/8/8/4K3 w - - 0 1')}`);
-  await page.waitForSelector('#view-editor[data-active]');
+  await view('view-editor');
   await analyzeButton().tap();
-  await page.waitForSelector('#view-analysis[data-active]');
+  await view('view-analysis');
   await dragSquare('#analysis-board', 'a7', 'a8');
   await page.waitForSelector('#promotion:not([hidden])');
   await screenshot('promotion-picker');
@@ -294,7 +300,7 @@ await test('camera capture', async () => {
   await page.waitForSelector('#viewfinder.camera-on', { timeout: 10000 });
   const started = Date.now();
   await page.tap('[data-testid=scan-shutter]');
-  await page.waitForSelector('#view-editor[data-active]', { timeout: 120000 });
+  await view('view-editor', 120000);
   timings.cameraScanSeconds = (Date.now() - started) / 1000;
   await screenshot('editor-from-camera');
 });
