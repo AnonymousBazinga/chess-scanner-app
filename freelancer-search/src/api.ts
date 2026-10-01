@@ -1,35 +1,37 @@
-import type { SearchEvent, SearchRequest } from "../shared/types.ts";
+import type { AppConfig, Filters, ServerEvent, Spec } from "../shared/types.ts";
 
-export async function fetchConfig(): Promise<{ ai: boolean; model: string | null }> {
-  const res = await fetch("/api/config");
-  return res.json();
+async function json<T>(res: Response): Promise<T> {
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body as T;
 }
 
-/** POSTs a search and calls onEvent for each server-sent event until the stream ends. */
-export async function streamSearch(body: SearchRequest, onEvent: (e: SearchEvent) => void, signal: AbortSignal) {
-  const res = await fetch("/api/search", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok || !res.body) throw new Error(`Search failed (${res.status})`);
-  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += value;
-    let end: number;
-    while ((end = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      const data = frame
-        .split("\n")
-        .filter((l) => l.startsWith("data: "))
-        .map((l) => l.slice(6))
-        .join("\n");
-      if (data) onEvent(JSON.parse(data));
-    }
-  }
-}
+export const api = {
+  config: () => fetch("/api/config").then((r) => json<AppConfig>(r)),
+  createSession: () => fetch("/api/sessions", { method: "POST" }).then((r) => json<{ id: string }>(r)),
+  send: (id: string, text: string) =>
+    fetch(`/api/sessions/${id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    }).then((r) => json(r)),
+  abort: (id: string) => fetch(`/api/sessions/${id}/abort`, { method: "POST" }).then((r) => json(r)),
+  setFilters: (id: string, filters: Filters) =>
+    fetch(`/api/sessions/${id}/filters`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(filters),
+    }).then((r) => json(r)),
+  setSpec: (id: string, spec: Spec) =>
+    fetch(`/api/sessions/${id}/spec`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(spec),
+    }).then((r) => json(r)),
+  events: (id: string, onEvent: (e: ServerEvent) => void, onError: () => void) => {
+    const source = new EventSource(`/api/sessions/${id}/events`);
+    source.onmessage = (m) => onEvent(JSON.parse(m.data));
+    source.onerror = onError;
+    return () => source.close();
+  },
+};

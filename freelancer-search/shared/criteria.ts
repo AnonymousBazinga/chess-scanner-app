@@ -10,6 +10,7 @@ export function slug(label: string) {
   );
 }
 
+/** A criterion typed into the UI by hand. */
 export function criterionFrom(label: string, weight: 1 | 2 | 3 = 2): Criterion {
-  return { id: slug(label), label, description: `Has done work involving ${label}.`, keywords: [label], weight };
+  return { id: slug(label), label, description: `Has delivered work involving ${label}.`, weight };
 }

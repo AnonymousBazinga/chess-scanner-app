@@ -4,10 +4,8 @@ export interface Criterion {
   id: string;
   /** Short chip label, e.g. "Python ETL pipelines". */
   label: string;
-  /** What counts as evidence, written for the ranker. */
+  /** What counts as evidence. Jev and the agent judge candidates against this. */
   description: string;
-  /** Terms that signal this criterion in a profile or past job, used by keyword ranking. */
-  keywords: string[];
   /** 1 = nice to have, 2 = important, 3 = must have. */
   weight: 1 | 2 | 3;
 }
@@ -15,7 +13,7 @@ export interface Criterion {
 export interface Filters {
   /** Freelancer.com country names, e.g. "Germany". Empty = anywhere. */
   countries: string[];
-  /** Human label for the location filter when it came from a region, e.g. "Europe". */
+  /** Label for the location filter, e.g. "Europe" or "Spain, Portugal". */
   locationLabel: string | null;
   minRate: number | null;
   maxRate: number | null;
@@ -24,18 +22,10 @@ export interface Filters {
   minReviews: number | null;
 }
 
-export interface SearchSpec {
-  /** One or two sentences describing what the client needs. The ranker reads this. */
+export interface Spec {
+  /** What the client needs, in the agent's words. Jev's overall-fit question reads this. */
   brief: string;
-  /** Keyword queries sent to the Freelancer.com directory to build the candidate pool. */
-  queries: string[];
-  filters: Filters;
   criteria: Criterion[];
-}
-
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
 }
 
 export interface WorkItem {
@@ -66,53 +56,87 @@ export interface Freelancer {
   completionRate: number | null;
   onTime: number | null;
   onBudget: number | null;
-  earningsScore: number | null;
   skills: string[];
+  /** Exams and certifications passed on Freelancer.com. */
+  qualifications: string[];
   registeredAt: number | null;
   profileUrl: string;
-  /** Past client reviews and portfolio items, newest first. Filled in by enrichment. */
+  /** Past client reviews and portfolio items. Filled in before screening. */
   work: WorkItem[];
   enriched: boolean;
+  /** Links the agent verified (GitHub, personal site, ...). */
+  links: { label: string; url: string }[];
 }
 
-export type Fit = "strong" | "partial" | "none";
+/** How strong the evidence is that a freelancer meets one criterion. */
+export type Fit = "direct" | "adjacent" | "claimed" | "none";
 
 export interface CriterionScore {
   criterionId: string;
   fit: Fit;
-  /** Quote or paraphrase of the profile or work history that justifies the fit. */
+  /** Why, e.g. a quoted project title. */
   evidence: string;
 }
 
 export interface Ranking {
-  /** 0-100 relevance to the brief and criteria. */
-  relevance: number;
-  /** 0-100 track-record score from ratings, volume and completion. */
-  quality: number;
-  /** 0-100 combined score used for "Best match". */
+  /** 0-100, used for "Best match". */
   score: number;
-  /** "ai" = scored by Claude against the criteria; "keyword" = lexical estimate. */
-  method: "ai" | "keyword";
+  /** "jev" = screened by Jev; "agent" = the agent read the profile and recorded a verdict. */
+  source: "jev" | "agent";
+  verdict: "shortlist" | "maybe" | "reject" | null;
   summary: string;
   criteria: CriterionScore[];
   /** Indexes into Freelancer.work that best support the match. */
   highlights: number[];
+  /** Jev's confidence in its own answers, 0-1. */
+  confidence: number | null;
+  /** Set when screening failed for this candidate. */
+  error?: string;
 }
 
-export type SearchEvent =
-  | { type: "plan"; spec: SearchSpec; reply: string; suggestions: string[]; ai: boolean }
-  | { type: "status"; stage: "planning" | "retrieving" | "enriching" | "ranking" | "done"; message: string }
-  /** The candidate pool, replacing any previous one. Work history arrives later in "work". */
-  | { type: "pool"; freelancers: Freelancer[]; totalMatches: number }
-  | { type: "work"; work: Record<number, WorkItem[]> }
-  /** Rankings to merge into what the client already has, keyed by freelancer id. */
-  | { type: "rankings"; rankings: Record<number, Ranking> }
-  | { type: "error"; message: string };
+export interface Activity {
+  id: string;
+  /** "tool" = a step the agent took; "note" = what it said between steps; "thought" = reasoning summary. */
+  kind: "tool" | "note" | "thought";
+  label: string;
+  detail?: string;
+  state: "running" | "done" | "error";
+}
 
-export interface SearchRequest {
-  messages: ChatMessage[];
-  /** The spec currently shown in the UI, possibly edited by hand. */
-  spec: SearchSpec | null;
-  /** True when the last chat message should be turned into a new spec. */
-  replan: boolean;
+export type ServerEvent =
+  | { type: "turn_start"; turnId: string }
+  | { type: "activity"; turnId: string; activity: Activity }
+  | { type: "reply_delta"; turnId: string; text: string }
+  /** The text streamed so far was commentary before tool calls, not the reply: move it into the activity log. */
+  | { type: "draft_to_note"; turnId: string }
+  | { type: "turn_end"; turnId: string; error?: string }
+  | { type: "spec"; spec: Spec }
+  | { type: "filters"; filters: Filters }
+  | { type: "suggestions"; suggestions: string[] }
+  | { type: "pool"; freelancers: Freelancer[] }
+  | { type: "work"; work: Record<number, WorkItem[]> }
+  | { type: "rankings"; rankings: Record<number, Ranking>; reset?: boolean }
+  | { type: "links"; links: Record<number, Freelancer["links"]> };
+
+export interface AppConfig {
+  ready: boolean;
+  /** What's missing from the server's .env, shown instead of the app when not ready. */
+  missing: string[];
+  model: string;
+  regions: Record<string, string[]>;
+  countries: string[];
+}
+
+export function emptyFilters(): Filters {
+  return { countries: [], locationLabel: null, minRate: null, maxRate: null, minRating: null, minReviews: null };
+}
+
+export function passesFilters(f: Freelancer, filters: Filters) {
+  const { countries, minRating, minReviews, minRate, maxRate } = filters;
+  if (countries.length && (!f.country || !countries.includes(f.country))) return false;
+  if (minRating != null && (f.rating ?? 0) < minRating) return false;
+  if (minReviews != null && f.reviews < minReviews) return false;
+  if (minRate != null && (f.hourlyRate == null || f.hourlyRate < minRate)) return false;
+  if (maxRate != null && (f.hourlyRate == null || f.hourlyRate > maxRate)) return false;
+  return true;
 }

@@ -57,12 +57,15 @@ export function normalizeUser(u: any): Freelancer {
     completionRate: rep.all ? rep.completion_rate ?? null : null,
     onTime: rep.all ? rep.on_time ?? null : null,
     onBudget: rep.all ? rep.on_budget ?? null : null,
-    earningsScore: u.reputation?.earnings_score ?? null,
     skills: (u.jobs ?? []).map((j: any) => j.name as string),
+    qualifications: (u.qualifications ?? [])
+      .filter((q: any) => q.name && q.type !== "Freelancer Orientation")
+      .map((q: any) => (q.score_percentage != null ? `${q.name} (${Math.round(q.score_percentage)}%)` : q.name)),
     registeredAt: u.registration_date ?? null,
     profileUrl: `${SITE}/u/${u.username}`,
     work: [],
     enriched: false,
+    links: [],
   };
 }
 
@@ -89,6 +92,7 @@ export async function searchDirectory(query: string, filters: Filters, limit = 1
     ["avatar", true],
     ["location_details", true],
     ["display_info", true],
+    ["qualification_details", true],
   ];
   for (const country of filters.countries) params.push(["countries[]", country]);
   if (filters.minRate != null) params.push(["hourly_rate_min", filters.minRate]);
@@ -136,7 +140,7 @@ async function fetchPortfolios(userIds: number[]): Promise<Map<number, WorkItem[
       items.slice(0, 12).map((p) => ({
         kind: "portfolio",
         title: p.title ?? "Portfolio item",
-        text: p.description ?? "",
+        text: [p.description, ...(p.articles ?? []).map((a: any) => a.text)].filter(Boolean).join("\n"),
         rating: null,
         date: p.last_modified ?? null,
         url: null,

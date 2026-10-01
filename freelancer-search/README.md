@@ -1,51 +1,53 @@
-# Talent Scout: AI-ranked freelancer search
+# Talent Scout: agentic freelancer search
 
-An Upwork-style freelancer search where the list is sorted by how closely each person's **actual past
-work** matches your project, not by keyword hits or platform promotion. You describe the project in a
-chat (or paste a whole job post), and a full results list on the right re-sorts as you refine:
-"Add Scrapy", "More from Spain", "Higher job success".
+Upwork-style freelancer search where an AI agent does the part you'd otherwise do by hand: reading
+every candidate's past client work and judging whether they have really done your kind of project
+before. You describe the job in a chat (or paste the whole job post). The agent searches, screens and
+investigates, and the results list on the right is ranked by proven experience in your niche. The
+list is the main output: you still browse many candidates, sorted, with the evidence on each card.
 
-Data comes from the free, public [Freelancer.com API](https://developers.freelancer.com) (no key needed).
-Ranking uses Claude when `ANTHROPIC_API_KEY` is set, and falls back to keyword matching otherwise.
+Candidates come from the free, public [Freelancer.com API](https://developers.freelancer.com) (no
+key needed). The agent runs on the [Pi agent harness](https://github.com/earendil-works/pi)
+(`@earendil-works/pi-agent-core`), and every candidate is screened by
+[Jev](https://docs.typesafe.ai) (TypeSafe).
 
 ## How a search works
 
 ```
-chat message ──► planner ──► spec: queries · filters · weighted criteria   (shown as editable chips)
-                                  │
-                                  ▼
-                   Freelancer.com directory, one call per query (≤100 each)
-                                  │  merge, dedupe, apply rate/rating filters
-                                  ▼
-                   candidate pool (typically 150–300)  ──► keyword pass, list appears
-                                  │
-                                  ▼
-                   top 80: fetch client reviews (project title + review) and portfolio
-                                  │                                        ──► keyword pass on work history
-                                  ▼
-                   top 40: Claude reads profile + work history, judges each
-                   criterion strong / partial / none with quoted evidence  ──► list re-sorts batch by batch
+you ──► agent loop (Pi + GPT-5.5)
+          │  set_search_criteria   brief + 3-6 weighted criteria about demonstrated work, plus filters
+          │  search_freelancers ×N different phrasings, tool names, adjacent niches, page 2 where useful
+          │                        → a pool of a few hundred candidates
+          │  screen_candidates     fetch each candidate's client reviews + portfolio, then Jev scores
+          │                        every criterion (calibrated probabilities)  → the list sorts live
+          │  inspect_freelancer    read the top ~10-15 in full: every client project and review
+          │  github_lookup         find and verify their GitHub, read repos and languages
+          │  fetch_page            read a site or project they mention
+          │  record_assessment     verdict + score + per-criterion evidence  → their card updates
+          │  …repeat: search new angles if strong matches are thin, inspect more
+          ▼
+        short reply naming the standouts, and suggested refinements
 ```
 
-- **Planner** (`server/ai.ts`): turns the conversation plus the current spec into an updated spec: 2–5
-  directory queries, location/rate/rating filters, a one-paragraph brief, and 3–6 weighted criteria that
-  separate a great fit from a generic one (for example "Delivered production ETL in Python" rather than
-  "knows Python"). It also suggests follow-up refinements. Each turn edits the spec, so refinements are
-  cumulative.
-- **Ranker** (`server/ai.ts`): batches of 5 candidates, 8 batches in parallel. The prompt tells Claude
-  to treat delivered client work as strong evidence and skill lists as weak (many profiles list 300+
-  skills). Score = 80% relevance (weighted criteria + overall fit) + 20% track record (rating shrunk
-  toward 4.0 for few reviews, volume, completion rate).
-- **Keyword ranking** (`server/keyword.ts`): the same criteria matched against profile text and work
-  history, with client reviews weighted above portfolio and self-description. It gives the first
-  ordering within a second or two and decides who gets the expensive AI pass.
-- **Caching**: directory pages (30 min), work histories (6 h) and Claude's judgments (6 h, keyed by
-  brief + criteria) are cached in memory. Edits that leave the brief and criteria alone (filter
-  chips, location, rate) reuse the judgments for anyone already scored.
+- **Agent** (`server/agent.ts`, `server/runner.ts`): a Pi `Agent` with the nine tools above. Tool
+  calls run in parallel (for example, five profiles inspected at once). Each step streams to the chat
+  as an activity log; the model's reasoning summaries appear there too. A message sent while the agent
+  works steers it (`agent.steer`) instead of waiting. Rate limits and transient model errors resume the
+  same turn with backoff. Anything else ends the turn with a visible error.
+- **Jev screening** (`server/jev.ts`): one request per candidate. The state is their profile and
+  numbered work history. The questions are one Score per criterion (no evidence → claimed only →
+  related work → delivered for clients), a yes/no on "would a recruiter shortlist them", and a Choice
+  of their most relevant past project. The score is 85% relevance and 15% track record.
+- **Agent verdicts** replace Jev's score for the people it read in depth. Cards say which one you're
+  looking at ("Reviewed by the agent" or "Screened by Jev · 82% confident").
+- **Context**: every turn resends the conversation, so old tool output is trimmed once it's stale.
+  A profile dossier stays in context until the agent has recorded a verdict on that person.
 
-You can edit the spec without chatting: remove a filter or query, click a criterion's bars to cycle
-its weight (nice to have → important → must have), or add a criterion. The ☆ button keeps people in a
-shortlist (stored in the browser) across searches.
+Refining is a conversation. "Add Scrapy" adds a criterion, re-screens and searches for it; "More from
+Spain" changes the filter. The standard filters (location, hourly rate, rating, review count) are also
+plain controls above the list and apply instantly. Click a criterion's bars to change its weight, or
+add or remove criteria; the pool is re-screened by Jev and the agent is told what you changed. The
+bookmark keeps people in **Saved** across searches.
 
 ## Running it
 
@@ -54,36 +56,41 @@ Requires Node 22+.
 ```sh
 cd freelancer-search
 npm install
-cp .env.example .env    # add ANTHROPIC_API_KEY for AI ranking (optional)
-npm run dev             # http://localhost:5173 (API on :8787)
+cp .env.example .env   # fill in the keys
+npm run dev            # http://localhost:5173 (API on :8787)
 ```
 
-Production: `npm run build && npm start` serves the built UI and the API on one port (`PORT`, default
-8787).
+Production: `npm run build && npm start` serves the UI and API on one port (`PORT`, default 8787).
 
-Checks: `npm test` (planner, ranking and filter logic, with Claude stubbed) and `npm run typecheck`.
+Checks: `npm test` (the agent loop on Pi's scripted faux provider with Freelancer.com and Jev stubbed,
+retry behaviour, context trimming, Jev scoring) and `npm run typecheck`.
 
 ### Settings (`.env`)
 
-| Variable | Default | |
+| Variable | | |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | none | Enables Claude planning and ranking. Without it, everything runs on keywords. |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | `claude-sonnet-5-5` costs about half as much. |
-| `PLAN_EFFORT` / `RANK_EFFORT` | `medium` / `low` | Claude's effort level for each job. |
-| `AI_RANK_LIMIT` | `40` | Candidates Claude reviews per search. This is the main cost lever. |
-| `ENRICH_LIMIT` | `80` | Candidates whose work history is fetched. |
+| `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_BASE_URL` | required | The agent's model. |
+| `TYPESAFE_API_KEY` | required | Jev screening. |
+| `LLM_PROVIDER`, `LLM_MODEL` | `azure-openai-responses`, `gpt-5.5` | Any provider and model Pi supports, e.g. `anthropic` + `claude-opus-5-5` with `ANTHROPIC_API_KEY`. |
+| `AGENT_THINKING` | `medium` | Reasoning effort per agent turn. |
+| `GITHUB_API_TOKEN` | optional | GitHub allows 60 unauthenticated requests an hour (10 searches a minute). |
 
-**Cost**: a fresh search sends roughly 70–80k input tokens and 15–20k output tokens to Claude (planner
-plus 8 ranking batches). On Opus 5.5 that is on the order of $0.50–$0.70; this is an estimate from
-prompt sizes, not a measurement. Refinements that only change filters mostly hit the cache.
+Missing required keys show a setup screen. There is no non-AI fallback.
+
+**Time and cost.** A first search takes about 2–3 minutes: a dozen or so model turns, 300–500 Jev
+screenings, and 10–20 profiles read in depth. Jev is billed on input tokens only, at about $0.04 per
+million, so screening 500 profiles costs a few cents. The agent's model is the main cost. With
+GPT-5.5 a first search uses on the order of a few hundred thousand input tokens; check your Azure
+pricing. Refinements reuse the pool and cost less.
 
 ## Limits
 
-- **Freelancer.com, not Upwork.** Upwork's API needs an approved developer application and doesn't offer
-  open talent search, so this uses Freelancer.com, whose directory, reviews and portfolios are public.
-  Other sources can be added by producing the same `Freelancer` shape (`shared/types.ts`).
-- The directory search is keyword based, so the pool depends on the planner's queries. The planner
-  writes several synonyms per search to widen it.
-- Only the top 80 get their work history read and the top 40 are judged by Claude; the rest stay in the
-  list, sorted by keyword match, and you can open their profiles.
-- Freelancer.com allows 1,000 API requests a minute per IP. A fresh search uses about 90.
+- **Freelancer.com, not Upwork.** Upwork's API needs an approved application and has no open talent
+  search. Another source can be added by producing the same `Freelancer` shape (`shared/types.ts`).
+- **External profiles.** Freelancer.com strips links from profiles, so "GitHub" in a bio has to be
+  looked up by name, and the agent only counts an account once it has matched name, location or
+  projects. LinkedIn pages generally can't be fetched without logging in.
+- **Rate limits.** Your Azure deployment's tokens-per-minute limit is the usual bottleneck: the agent
+  pauses and resumes when it's hit. Freelancer.com allows 1,000 requests a minute; screening fetches
+  one review list per candidate.
+- Sessions live in server memory and expire after two idle hours.

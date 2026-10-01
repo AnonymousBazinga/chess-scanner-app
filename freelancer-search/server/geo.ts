@@ -85,3 +85,13 @@ export function resolvePlace(place: string): string[] {
 export function isRegion(place: string): boolean {
   return place.trim().toLowerCase() in REGIONS;
 }
+
+const DISPLAY_REGIONS = [
+  "Europe", "Eastern Europe", "Western Europe", "North America", "Latin America", "South Asia",
+  "Southeast Asia", "East Asia", "Middle East", "Africa", "Oceania",
+];
+
+/** Region name -> Freelancer.com country names, for the location filter in the UI. */
+export function regionMap(): Record<string, string[]> {
+  return Object.fromEntries(DISPLAY_REGIONS.map((r) => [r, resolvePlace(r)]));
+}
