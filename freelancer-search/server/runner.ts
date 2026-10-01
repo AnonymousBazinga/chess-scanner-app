@@ -3,14 +3,14 @@
 
 import type { Agent, AgentEvent } from "@earendil-works/pi-agent-core";
 import type { Activity } from "../shared/types.ts";
-import { createAgent, describeTool, type ModelOverride } from "./agent.ts";
+import { createAgent, describeTool, type ModelOverride, type ToolStep } from "./agent.ts";
 import type { Session } from "./session.ts";
 import { truncate } from "./util.ts";
 
 export class Runner {
   readonly agent: Agent;
   private turnId: string | null = null;
-  private labels = new Map<string, string>();
+  private steps = new Map<string, ToolStep>();
   private retries = 0;
   private resumeTimer: NodeJS.Timeout | null = null;
   private retryBaseMs: number;
@@ -33,7 +33,7 @@ export class Runner {
     if (this.busy) {
       // Picked up after the current tool batch (or when a paused retry resumes).
       this.agent.steer(message);
-      this.activity({ id: `steer-${Date.now()}`, kind: "note", label: `Got your message: "${truncate(text, 80)}". Adjusting.`, state: "done" });
+      this.activity({ id: `steer-${Date.now()}`, kind: "note", label: `Taking in \u201c${truncate(text, 80)}\u201d`, state: "done" });
       return;
     }
     this.agent.prompt(message).catch((err) => {
@@ -63,7 +63,7 @@ export class Runner {
   private scheduleResume(failed: unknown, reason: string) {
     this.retries++;
     const wait = Math.min(60_000, this.retryBaseMs * 2 ** (this.retries - 1));
-    this.activity({ id: `retry-${Date.now()}`, kind: "note", label: `${reason} Resuming in ${Math.round(wait / 1000)}s…`, state: "done" });
+    this.activity({ id: `retry-${Date.now()}`, kind: "note", label: `${reason} Resuming in ${Math.round(wait / 1000)} seconds`, state: "done" });
     this.resumeTimer = setTimeout(() => {
       this.resumeTimer = null;
       this.agent.state.messages = this.agent.state.messages.filter((m) => m !== failed);
@@ -79,8 +79,8 @@ export class Runner {
   }
 
   private progress(toolCallId: string, detail: string) {
-    const label = this.labels.get(toolCallId);
-    if (label) this.activity({ id: toolCallId, kind: "tool", label, detail, state: "running" });
+    const step = this.steps.get(toolCallId);
+    if (step) this.activity({ id: toolCallId, kind: step.kind, label: step.running, detail, state: "running" });
   }
 
   private onEvent(e: AgentEvent) {
@@ -118,18 +118,25 @@ export class Runner {
         break;
       }
       case "tool_execution_start": {
-        const label = describeTool(this.session, e.toolName, e.args);
-        if (!label) break;
-        this.labels.set(e.toolCallId, label);
-        this.activity({ id: e.toolCallId, kind: "tool", label, state: "running" });
+        const step = describeTool(this.session, e.toolName, e.args);
+        if (!step) break;
+        this.steps.set(e.toolCallId, step);
+        this.activity({ id: e.toolCallId, kind: step.kind, label: step.running, state: "running" });
         break;
       }
       case "tool_execution_end": {
-        const label = this.labels.get(e.toolCallId);
-        if (!label) break;
+        const step = this.steps.get(e.toolCallId);
+        if (!step) break;
+        const details = e.result?.details ?? {};
         const errorText = e.isError ? e.result?.content?.find((c: any) => c.type === "text")?.text : undefined;
-        const detail = e.isError ? truncate(errorText ?? "Failed", 160) : e.result?.details?.summary || undefined;
-        this.activity({ id: e.toolCallId, kind: "tool", label, detail, state: e.isError ? "error" : "done" });
+        this.activity({
+          id: e.toolCallId,
+          kind: step.kind,
+          label: step.done,
+          detail: e.isError ? truncate(errorText ?? "Failed", 160) : details.summary || undefined,
+          tone: details.tone,
+          state: e.isError ? "error" : "done",
+        });
         break;
       }
       case "agent_end": {

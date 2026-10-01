@@ -1,17 +1,5 @@
-import {
-  ArrowUp,
-  Brain,
-  Check,
-  ChevronRight,
-  CircleAlert,
-  Copy,
-  LoaderCircle,
-  PanelLeftClose,
-  Sparkles,
-  Square,
-  SquarePen,
-} from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowUp, Check, ChevronRight, Copy, Plus, Square } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Activity } from "../../shared/types.ts";
 import Markdown from "./Markdown.tsx";
 
@@ -39,99 +27,151 @@ interface Props {
   turns: Turn[];
   busy: boolean;
   suggestions: string[];
-  model: string;
-  title: string;
   onSend: (text: string) => void;
   onStop: () => void;
   onNewChat: () => void;
-  onCollapse: () => void;
+  paneSwitch: React.ReactNode;
 }
 
-function clock(ms: number) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+const STARTERS = [
+  "Python data engineer in Europe under $70/hr who has built ETL pipelines into BigQuery",
+  "Shopify developer who has migrated stores off WooCommerce",
+  "Scraping specialist who has dealt with Cloudflare and anti-bot protection",
+];
+
+function duration(ms: number) {
+  const s = Math.max(1, Math.round(ms / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-function time(at: number) {
-  return new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+/** "Searched 12 queries, read 15 work histories and screened the pool in 2m 58s" */
+function foldSummary(reads: Activity[], ms: number) {
+  const count = (prefix: string) => reads.filter((a) => a.label.startsWith(prefix)).length;
+  const parts: string[] = [];
+  const searches = count("Searched");
+  const profiles = count("Read ") - count("Read the ranking") - count("Read GitHub");
+  const screens = count("Screened");
+  const github = count("Looked for") + count("Read GitHub");
+  const pages = count("Opened");
+  if (searches) parts.push(`searched ${searches} ${searches === 1 ? "query" : "queries"}`);
+  if (screens) parts.push(screens === 1 ? "screened the pool" : `screened the pool ${screens} times`);
+  if (profiles) parts.push(`read ${profiles} work ${profiles === 1 ? "history" : "histories"}`);
+  if (github) parts.push(`checked GitHub ${github} ${github === 1 ? "time" : "times"}`);
+  if (pages) parts.push(`opened ${pages} ${pages === 1 ? "page" : "pages"}`);
+  const failed = reads.filter((a) => a.state === "error").length;
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0] ?? `looked at ${reads.length} things`;
+  const failures = failed ? `, ${failed} ${failed === 1 ? "step" : "steps"} failed` : "";
+  return `${list[0].toUpperCase()}${list.slice(1)} in ${duration(ms)}${failures}`;
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+function Step({ a, live }: { a: Activity; live: boolean }) {
+  const running = a.state === "running" && live;
+  const mark = a.state === "error" ? "bad" : a.kind === "write" ? (a.tone ?? "muted") : "hollow";
+  // A verdict receipt reads "Shortlisted Martin, scored 64"; the reasoning is on hover.
+  const score = a.kind === "write" && a.state === "done" ? a.detail?.match(/^Scored (\d+)/)?.[1] : undefined;
+  const detail = score ? null : a.detail;
   return (
-    <button
-      className="icon-btn small"
-      aria-label="Copy"
-      onClick={() => {
-        navigator.clipboard?.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        });
-      }}
-    >
-      {copied ? <Check size={14} /> : <Copy size={14} />}
-    </button>
+    <div className={`step ${a.kind} ${a.state}`} title={score ? a.detail : undefined}>
+      <span className="step-mark">
+        <i className={mark} />
+      </span>
+      <span className="step-text">
+        <span className={running ? "shimmer" : ""}>{a.label}</span>
+        {score && <span className="step-detail">, scored {score}</span>}
+        {detail && <span className="step-detail">, {detail}</span>}
+      </span>
+    </div>
   );
 }
 
-function ActivityLog({ turn }: { turn: AgentTurn }) {
-  const running = turn.endedAt === null;
-  const [open, setOpen] = useState<boolean | null>(null);
-  const [, tick] = useState(0);
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => tick((n) => n + 1), 1000);
-    return () => clearInterval(t);
-  }, [running]);
+function AgentTurnView({ turn, last, suggestions, onSend }: { turn: AgentTurn; last: boolean; suggestions: string[]; onSend: (t: string) => void }) {
+  const [unfolded, setUnfolded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const live = turn.endedAt === null;
+  const reads = turn.activities.filter((a) => a.kind === "read" || a.kind === "thought");
+  const text = turn.text || turn.draft;
 
-  const expanded = open ?? running;
-  const elapsed = (turn.endedAt ?? Date.now()) - turn.startedAt;
-  const steps = turn.activities.filter((a) => a.kind === "tool").length;
-  const current = [...turn.activities].reverse().find((a) => a.kind === "tool" && a.state === "running");
-  if (!running && turn.activities.length === 0) return null;
+  // While running: every step in the order it happened. Settled: reads fold into one line,
+  // receipts (writes) and what the agent said stay.
+  // A failed read (a lookup that errored) folds with the other reads; the fold line counts it.
+  const visible = live || unfolded ? turn.activities : turn.activities.filter((a) => a.kind === "write" || a.kind === "note");
 
   return (
-    <div className="activity">
-      <button className="activity-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded}>
-        <Sparkles size={14} className={running ? "pulse" : ""} />
-        <span className={running ? "shimmer" : ""}>
-          {running ? (current ? current.label : "Thinking") : `Worked for ${clock(elapsed)}`}
-        </span>
-        <span className="muted">
-          {running ? clock(elapsed) : `${steps} step${steps === 1 ? "" : "s"}`}
-        </span>
-        <ChevronRight size={14} className={`chev ${expanded ? "open" : ""}`} />
-      </button>
-      {expanded && (
-        <ol className="steps">
-          {turn.activities.map((a) => (
-            <li key={a.id} className={`step ${a.kind} ${a.state}`}>
-              <span className="step-icon">
-                {a.kind === "thought" ? (
-                  <Brain size={13} />
-                ) : a.kind === "note" ? (
-                  <span className="dot" />
-                ) : a.state === "running" ? (
-                  <LoaderCircle size={13} className="spin" />
-                ) : a.state === "error" ? (
-                  <CircleAlert size={13} />
-                ) : (
-                  <Check size={13} />
-                )}
-              </span>
-              <span className="step-text">
-                {a.label}
-                {a.detail && <span className="step-detail">{a.detail}</span>}
-              </span>
-            </li>
+    <div className={`agent-turn ${last ? "last" : ""}`}>
+      {!live && reads.length > 0 && (
+        <div className="step">
+          <span className="step-mark" />
+          <button className="fold step-text" aria-expanded={unfolded} onClick={() => setUnfolded((u) => !u)}>
+            {foldSummary(reads.filter((a) => a.kind === "read"), (turn.endedAt ?? Date.now()) - turn.startedAt)}
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+      {visible.map((a) =>
+        a.kind === "note" ? (
+          <div key={a.id} className="step note">
+            <span className="step-mark" />
+            <span className="step-text preamble">{a.label}</span>
+          </div>
+        ) : a.kind === "thought" ? (
+          <div key={a.id} className="step thought">
+            <span className="step-mark" />
+            <span className="step-text">{a.label}</span>
+          </div>
+        ) : (
+          <Step key={a.id} a={a} live={live} />
+        ),
+      )}
+      {live && turn.activities.length === 0 && !text && (
+        <div className="step">
+          <span className="step-mark" />
+          <span className="step-text shimmer">Thinking</span>
+        </div>
+      )}
+      {text && (
+        <div className="answer">
+          <Markdown text={text} />
+        </div>
+      )}
+      {turn.error && (
+        <div className="turn-error">
+          <span className="step-mark">
+            <i className="bad" />
+          </span>
+          <span>{turn.error === "Stopped." ? "Stopped." : `The search stopped: ${turn.error}`}</span>
+        </div>
+      )}
+      {!live && last && suggestions.length > 0 && (
+        <div className="followups">
+          {suggestions.map((s) => (
+            <button key={s} className="outline-button" onClick={() => onSend(s)}>
+              {s}
+            </button>
           ))}
-        </ol>
+        </div>
+      )}
+      {!live && text && (
+        <div className="turn-actions">
+          <button
+            className="icon-button"
+            aria-label="Copy answer"
+            title="Copy answer"
+            onClick={() =>
+              navigator.clipboard?.writeText(text).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1200);
+              })
+            }
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        </div>
       )}
     </div>
   );
 }
 
-export default function ChatPanel({ turns, busy, suggestions, model, title, onSend, onStop, onNewChat, onCollapse }: Props) {
+export default function ChatPanel({ turns, busy, suggestions, onSend, onStop, onNewChat, paneSwitch }: Props) {
   const [draft, setDraft] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -156,24 +196,21 @@ export default function ChatPanel({ turns, busy, suggestions, model, title, onSe
     onSend(t);
     setDraft("");
   };
+  const lastAgent = [...turns].reverse().find((t) => t.kind === "agent");
 
   return (
-    <aside className="chat">
-      <header className="chat-head">
-        <span className="orb" aria-hidden />
-        <h2 title={title}>{title}</h2>
-        <div className="head-actions">
-          <button className="icon-btn" aria-label="New search" title="New search" onClick={onNewChat}>
-            <SquarePen size={18} />
-          </button>
-          <button className="icon-btn" aria-label="Hide chat" title="Hide chat" onClick={onCollapse}>
-            <PanelLeftClose size={18} />
-          </button>
-        </div>
+    <section className="pane pane-chat" aria-label="Chat">
+      <header className="band">
+        <span className="band-title">talent scout</span>
+        {paneSwitch}
+        <span className="band-spacer" />
+        <button className="icon-button" aria-label="New search" title="New search" onClick={onNewChat}>
+          <Plus size={16} />
+        </button>
       </header>
 
       <div
-        className="log"
+        className="transcript"
         ref={logRef}
         onScroll={(e) => {
           const el = e.currentTarget;
@@ -181,60 +218,36 @@ export default function ChatPanel({ turns, busy, suggestions, model, title, onSe
         }}
       >
         {turns.length === 0 && (
-          <div className="intro">
-            <p>Describe who you're hiring, or paste the whole job post.</p>
-            <p className="muted">
-              I'll search Freelancer.com from several angles, have Jev screen every candidate's past client work, read
-              the strongest profiles in depth, and rank the list on the right by how closely their delivered work
-              matches your niche.
-            </p>
+          <div className="welcome">
+            <p>Describe who you're hiring, or paste the job post. I search Freelancer.com, read each candidate's past client work, and rank the list by how closely it matches yours.</p>
+            <div className="starters">
+              {STARTERS.map((s) => (
+                <button key={s} className="starter" onClick={() => submit(s)}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {turns.map((t, i) =>
           t.kind === "user" ? (
-            <div key={i} className="msg user">
-              <div className="bubble">{t.text}</div>
-              <div className="meta">
-                <span>{time(t.at)}</span>
-                <CopyButton text={t.text} />
-              </div>
+            <div key={i} className="user-turn">
+              <div className="pill">{t.text}</div>
             </div>
           ) : (
-            <div key={t.turnId} className="msg agent">
-              <ActivityLog turn={t} />
-              {(t.text || t.draft) && <Markdown text={t.text || t.draft} />}
-              {t.error && (
-                <p className="error">
-                  <CircleAlert size={14} /> {t.error}
-                </p>
-              )}
-              {t.endedAt !== null && t.text && (
-                <div className="meta">
-                  <CopyButton text={t.text} />
-                </div>
-              )}
-            </div>
+            <AgentTurnView key={t.turnId} turn={t} last={t === lastAgent} suggestions={suggestions} onSend={submit} />
           ),
         )}
       </div>
 
-      <div className="composer-wrap">
-        {suggestions.length > 0 && !busy && (
-          <div className="suggestions">
-            {suggestions.map((s) => (
-              <button key={s} onClick={() => submit(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-        <form
-          className="composer"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
+      <form
+        className="composer"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <div className="capture">
           <textarea
             ref={inputRef}
             value={draft}
@@ -246,31 +259,20 @@ export default function ChatPanel({ turns, busy, suggestions, model, title, onSe
                 submit();
               }
             }}
-            placeholder={
-              busy ? "Steer the search while it runs…" : turns.length ? "Refine: 'Add Scrapy', 'More from Spain'…" : "Who are you looking for?"
-            }
+            placeholder={busy ? "Steer the search" : turns.length ? "Refine the search" : "Who are you looking for"}
             aria-label="Message"
           />
-          <div className="composer-row">
-            <span className="chip-static" title="The agent that runs the search">
-              <Sparkles size={13} /> {model}
-            </span>
-            <span className="chip-static" title="Screens every candidate's work history">
-              Jev screening
-            </span>
-            <span className="spacer" />
-            {busy && !draft.trim() ? (
-              <button type="button" className="send stop" aria-label="Stop" onClick={onStop}>
-                <Square size={12} fill="currentColor" />
-              </button>
-            ) : (
-              <button type="submit" className="send" aria-label="Send" disabled={!draft.trim()}>
-                <ArrowUp size={17} />
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-    </aside>
+          {busy && !draft.trim() ? (
+            <button type="button" className="send" aria-label="Stop" title="Stop" onClick={onStop}>
+              <Square size={11} fill="currentColor" />
+            </button>
+          ) : (
+            <button type="submit" className="send" aria-label="Send" disabled={!draft.trim()}>
+              <ArrowUp size={16} />
+            </button>
+          )}
+        </div>
+      </form>
+    </section>
   );
 }

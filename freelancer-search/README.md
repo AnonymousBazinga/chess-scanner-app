@@ -49,6 +49,23 @@ plain controls above the list and apply instantly. Click a criterion's bars to c
 add or remove criteria; the pool is re-screened by Jev and the agent is told what you changed. The
 bookmark keeps people in **Saved** across searches.
 
+## Design
+
+The interface follows Kenny's design language (the cntx DESIGN.md): warm stone monochrome in light
+and dark, the system font stack, three planes and two hairlines, colour only on status marks, and
+flat inputs that show no box until focused. The transcript keeps that doc's conversation rules: your
+message is the only bubble. Each step names its subject while it runs, and reads fold into one line
+once the turn settles. Verdicts stay as receipts, and follow-up suggestions are plain buttons under
+the answer.
+
+One element carries the identity: the **evidence glyph**, a ring that fills as the evidence for a
+criterion moves from none to claimed, related work, and delivered for clients (green). Every row
+shows one per criterion, so you can scan the list for who has actually done the work.
+
+Deviations from that doc, since this is a standalone app rather than cntx: plain CSS custom
+properties instead of Tailwind and shadcn, and lucide icons in chrome, as the Nucleo set isn't
+available here.
+
 ## Running it
 
 Requires Node 22+.

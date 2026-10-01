@@ -94,7 +94,7 @@ describe("agent loop", () => {
 
     const labels = events.flatMap((e) => (e.type === "activity" && e.activity.state === "done" ? [e.activity.label] : []));
     expect(labels).toEqual(
-      expect.arrayContaining(['Searching Freelancer.com for "etl"', "Screening the pool with Jev", "Reading User 1's work history", "Assessing User 1"]),
+      expect.arrayContaining(["Searched \u201cetl\u201d", "Screened the pool with Jev", "Read User 1's work history", "Shortlisted User 1"]),
     );
     expect(events.some((e) => e.type === "draft_to_note")).toBe(true);
     const reply = events.flatMap((e) => (e.type === "reply_delta" ? [e.text] : [])).join("");

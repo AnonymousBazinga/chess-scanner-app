@@ -96,10 +96,16 @@ export interface Ranking {
 
 export interface Activity {
   id: string;
-  /** "tool" = a step the agent took; "note" = what it said between steps; "thought" = reasoning summary. */
-  kind: "tool" | "note" | "thought";
+  /**
+   * "read" = the agent looked at something (folds away when the turn settles);
+   * "write" = it changed the search or recorded a verdict (a receipt that stays);
+   * "note" = what it said before acting; "thought" = a reasoning summary.
+   */
+  kind: "read" | "write" | "note" | "thought";
   label: string;
   detail?: string;
+  /** Receipts carry a status hue, e.g. a shortlist verdict. */
+  tone?: "good" | "warn" | "muted";
   state: "running" | "done" | "error";
 }
 

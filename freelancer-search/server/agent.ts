@@ -89,8 +89,8 @@ function line(session: Session, f: Freelancer) {
   return `#${f.id} ${f.displayName} (@${f.username}) · ${truncate(f.tagline, 60)} · ${facts} · ${scoring}`;
 }
 
-function text(t: string, summary?: string) {
-  return { content: [{ type: "text" as const, text: t }], details: { summary: summary ?? "" } };
+function text(t: string, summary?: string, tone?: "good" | "warn" | "muted") {
+  return { content: [{ type: "text" as const, text: t }], details: { summary: summary ?? "", tone } };
 }
 
 function find(session: Session, id: number) {
@@ -160,7 +160,8 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
       if (p.min_reviews !== undefined) filters.minReviews = p.min_reviews;
       session.setFilters(filters);
 
-      const summary = criteria.map((c) => c.label).join(", ");
+      const where = [filters.locationLabel, filters.maxRate != null ? `under $${filters.maxRate}/hr` : null].filter(Boolean).join(", ");
+      const summary = where ? `filtered to ${where}` : "";
       const ids = criteria.map((c) => `${c.id} (${c.label}, weight ${c.weight})`).join("; ");
       return text(
         `${changed ? "Criteria updated; all scores were cleared, so call screen_candidates." : "Criteria unchanged."} Criterion ids for record_assessment: ${ids}. Filters now: ${JSON.stringify(filters)}. ${notes.join(" ")}`,
@@ -182,7 +183,7 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
       const page = Math.max(1, p.page ?? 1);
       const { users, total } = await searchDirectory(p.query, session.filters, 100, (page - 1) * 100);
       const added = session.addToPool(users);
-      const summary = `${users.length} results, ${added.length} new · pool ${session.pool.size}`;
+      const summary = `${added.length} new`;
       const lines = added.slice(0, 40).map((f) => line(session, f));
       return text(
         `"${p.query}" page ${page}: ${users.length} results of ${total} total matches; ${added.length} new to the pool (pool is now ${session.pool.size}).\n${lines.join("\n")}${added.length > 40 ? `\n…and ${added.length - 40} more` : ""}`,
@@ -199,8 +200,8 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
     parameters: Type.Object({ top: Type.Optional(Type.Integer({ description: "How many top candidates to return, default 25" })) }),
     async execute(toolCallId, p, signal) {
       if (!session.spec.criteria.length) throw new Error("Set criteria with set_search_criteria first.");
-      progress(toolCallId, "Reading work histories…");
-      const { screened, failures } = await session.screenPool((done, total) => progress(toolCallId, `${done}/${total} screened`), signal);
+      progress(toolCallId, "fetching work histories");
+      const { screened, failures } = await session.screenPool((done, total) => progress(toolCallId, `${done} of ${total}`), signal);
       const ranked = session.ranked();
       const direct = ranked.filter(({ r }) =>
         r?.criteria.some((c) => c.fit === "direct" && session.spec.criteria.find((x) => x.id === c.criterionId)?.weight === 3),
@@ -209,7 +210,7 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
       const failNote = failures.length ? `\n${failures.length} failed (${failures[0].error}); they show as unscored in the list.` : "";
       return text(
         `Screened ${screened} new candidates. ${ranked.length} in the list after filters; ${direct} have direct evidence for a must-have.${failNote}\nTop:\n${top.join("\n")}`,
-        `${screened} screened${failures.length ? `, ${failures.length} failed` : ""} · ${direct} with direct must-have evidence`,
+        `${screened} screened${failures.length ? `, ${failures.length} failed` : ""}, ${direct} with delivered work on a must-have`,
       );
     },
   });
@@ -260,7 +261,7 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
         criterion_ids: session.spec.criteria.map((c) => `${c.id} = ${c.label}`),
         current_screening: line(session, f),
       };
-      return text(JSON.stringify(dossier), `${f.work.length} work items`);
+      return text(JSON.stringify(dossier), `${f.work.length} items`);
     },
   });
 
@@ -277,7 +278,7 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
       if (p.login) {
         const profile = await githubProfile(p.login);
         if (!profile) return text(`No GitHub account "${p.login}".`, "not found");
-        return text(JSON.stringify(profile), `${profile.publicRepos} repos`);
+        return text(JSON.stringify(profile), `${profile.publicRepos} public repos`);
       }
       if (!p.query) throw new Error("Pass query or login.");
       const hits = await githubSearch(p.query);
@@ -343,7 +344,11 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
       };
       session.recordAssessment(f.id, ranking);
       if (p.links?.length) session.setLinks(f.id, p.links);
-      return text(`Recorded ${p.verdict} (${ranking.score}) for #${f.id}.`, `${f.displayName}: ${p.verdict} · ${ranking.score}`);
+      return text(
+        `Recorded ${p.verdict} (${ranking.score}) for #${f.id}.`,
+        `Scored ${ranking.score}: ${truncate(p.summary, 140)}`,
+        p.verdict === "shortlist" ? "good" : p.verdict === "maybe" ? "warn" : "muted",
+      );
     },
   });
 
@@ -361,30 +366,47 @@ export function buildTools(session: Session, progress: (toolCallId: string, deta
   return [setCriteria, search, screenTool, list, inspect, github, page, record, followups];
 }
 
-/** Activity label shown in the chat when a tool starts. */
-export function describeTool(session: Session, name: string, args: any): string | null {
+export interface ToolStep {
+  /** Reads fold into one line when the turn settles; writes stay as receipts. */
+  kind: "read" | "write";
+  /** Present tense, shown while the step runs. Always names its subject. */
+  running: string;
+  /** Past tense, shown once it has answered. */
+  done: string;
+}
+
+/** How a tool call reads in the chat. Null hides it. */
+export function describeTool(session: Session, name: string, args: any): ToolStep | null {
   const who = (id: number) => session.pool.get(id)?.displayName ?? `#${id}`;
+  const quoted = (q: string) => `\u201c${q}\u201d`;
   switch (name) {
     case "set_search_criteria":
-      return "Defining what to rank by";
-    case "search_freelancers":
-      return `Searching Freelancer.com for "${args.query}"${args.page > 1 ? ` (page ${args.page})` : ""}`;
+      return { kind: "write", running: "Writing the criteria", done: `Ranking by ${(args.criteria ?? []).map((c: any) => c.label).join(", ")}` };
+    case "search_freelancers": {
+      const page = args.page > 1 ? `, page ${args.page}` : "";
+      return { kind: "read", running: `Searching ${quoted(args.query)}${page}`, done: `Searched ${quoted(args.query)}${page}` };
+    }
     case "screen_candidates":
-      return "Screening the pool with Jev";
+      return { kind: "read", running: "Screening the pool with Jev", done: "Screened the pool with Jev" };
     case "list_candidates":
-      return "Reviewing the ranking";
+      return { kind: "read", running: "Reading the ranking", done: "Read the ranking" };
     case "inspect_freelancer":
-      return `Reading ${who(args.id)}'s work history`;
+      return { kind: "read", running: `Reading ${who(args.id)}'s work history`, done: `Read ${who(args.id)}'s work history` };
     case "github_lookup":
-      return args.login ? `Reading GitHub profile ${args.login}` : `Looking for "${args.query}" on GitHub`;
-    case "fetch_page":
+      return args.login
+        ? { kind: "read", running: `Reading GitHub ${args.login}`, done: `Read GitHub ${args.login}` }
+        : { kind: "read", running: `Looking for ${quoted(args.query)} on GitHub`, done: `Looked for ${quoted(args.query)} on GitHub` };
+    case "fetch_page": {
+      let host = "a web page";
       try {
-        return `Opening ${new URL(args.url).hostname}`;
-      } catch {
-        return "Opening a web page";
-      }
-    case "record_assessment":
-      return `Assessing ${who(args.id)}`;
+        host = new URL(args.url).hostname;
+      } catch {}
+      return { kind: "read", running: `Opening ${host}`, done: `Opened ${host}` };
+    }
+    case "record_assessment": {
+      const verdict = args.verdict === "shortlist" ? "Shortlisted" : args.verdict === "maybe" ? "Marked maybe:" : "Ruled out";
+      return { kind: "write", running: `Judging ${who(args.id)}`, done: `${verdict} ${who(args.id)}` };
+    }
     default:
       return null;
   }

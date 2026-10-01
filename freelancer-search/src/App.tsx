@@ -1,11 +1,11 @@
-import { ArrowDownWideNarrow, ChevronDown, PanelLeftOpen, Search } from "lucide-react";
+import { ArrowUpDown, ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emptyFilters, passesFilters, type AppConfig, type Filters, type Freelancer, type Ranking, type ServerEvent, type Spec } from "../shared/types.ts";
 import { api } from "./api.ts";
 import ChatPanel, { type AgentTurn, type Turn } from "./components/ChatPanel.tsx";
 import FilterBar from "./components/FilterBar.tsx";
-import Popover from "./components/Popover.tsx";
-import ResultCard from "./components/ResultCard.tsx";
+import Menu from "./components/Menu.tsx";
+import ResultRow from "./components/ResultRow.tsx";
 
 type Sort = "best" | "rating" | "reviews" | "rate-asc" | "rate-desc";
 const SORTS: Record<Sort, string> = {
@@ -44,7 +44,8 @@ export default function App() {
   const [view, setView] = useState<"all" | "saved">("all");
   const [shown, setShown] = useState(PAGE);
   const [saved, setSaved] = useState<Record<number, Saved>>(loadSaved);
-  const [chatOpen, setChatOpen] = useState(true);
+  /** Which pane shows on narrow screens. */
+  const [pane, setPane] = useState<"chat" | "talent">("chat");
   /** Between sending a message and the agent picking it up. */
   const [waiting, setWaiting] = useState(false);
   /** Edits made in the UI since the last message, so the agent hears about them. */
@@ -201,141 +202,128 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [freelancers, rankings, saved, sort, view, filters]);
 
-  const screenedCount = results.filter(({ r }) => r && !r.error).length;
+  const screenedCount = results.filter(({ r }) => r).length;
   const reviewedCount = results.filter(({ r }) => r?.source === "agent").length;
-  const title = turns.find((t) => t.kind === "user")?.text ?? "New search";
+  const screening = view === "all" && spec.criteria.length > 0 && screenedCount < results.length && busy;
+
+  const toggleSave = useCallback(
+    (f: Freelancer, r: Ranking | null) =>
+      setSaved((s) => {
+        const next = { ...s };
+        if (next[f.id]) delete next[f.id];
+        else next[f.id] = { freelancer: f, ranking: r };
+        return next;
+      }),
+    [],
+  );
+
+  const switcher = (
+    <div className="switch pane-switch" role="tablist" aria-label="View">
+      <button role="tab" aria-selected={pane === "chat"} onClick={() => setPane("chat")}>
+        Chat
+      </button>
+      <button role="tab" aria-selected={pane === "talent"} onClick={() => setPane("talent")}>
+        Talent
+      </button>
+    </div>
+  );
 
   if (configError) return <Setup missing={[configError]} />;
   if (config && !config.ready) return <Setup missing={config.missing} />;
 
-  return (
-    <div className={`app ${chatOpen ? "" : "chat-hidden"}`}>
-      {chatOpen ? (
-        <ChatPanel
-          turns={turns}
-          busy={busy}
-          suggestions={suggestions}
-          model={config?.model ?? "…"}
-          title={title}
-          onSend={send}
-          onStop={() => sessionId && api.abort(sessionId)}
-          onNewChat={newChat}
-          onCollapse={() => setChatOpen(false)}
-        />
-      ) : (
-        <button className="chat-fab" onClick={() => setChatOpen(true)} aria-label="Show chat">
-          <PanelLeftOpen size={18} /> Chat
-        </button>
-      )}
+  const meta =
+    all.length === 0
+      ? ""
+      : screening
+        ? `Screening ${screenedCount} of ${results.length}`
+        : view === "saved"
+          ? `${results.length} saved`
+          : `${results.length} ${results.length === 1 ? "candidate" : "candidates"}${reviewedCount ? `, ${reviewedCount} read in depth` : ""}`;
 
-      <main className="results">
-        <header className="results-head">
-          <div className="title-row">
-            <div>
-              <h1>Talent</h1>
-              <p className="subtitle">
-                {all.length === 0
-                  ? "Results appear here as the agent searches."
-                  : `${results.length} candidates · ${screenedCount} screened · ${reviewedCount} reviewed in depth`}
-              </p>
-            </div>
-            <div className="tabs" role="tablist">
-              <button role="tab" aria-selected={view === "all"} className={view === "all" ? "on" : ""} onClick={() => setView("all")}>
-                All
-              </button>
-              <button role="tab" aria-selected={view === "saved"} className={view === "saved" ? "on" : ""} onClick={() => setView("saved")}>
-                Saved {Object.keys(saved).length > 0 && <span className="count">{Object.keys(saved).length}</span>}
-              </button>
-            </div>
+  return (
+    <div className="shell" data-pane={pane}>
+      <ChatPanel
+        turns={turns}
+        busy={busy}
+        suggestions={suggestions}
+        onSend={send}
+        onStop={() => sessionId && api.abort(sessionId)}
+        onNewChat={newChat}
+        paneSwitch={switcher}
+      />
+
+      <section className="pane pane-talent" aria-label="Talent">
+        <header className="band">
+          <span className="band-title">Talent</span>
+          <span className="band-meta">{meta}</span>
+          {switcher}
+          <span className="band-spacer" />
+          <div className="switch" role="tablist" aria-label="Show">
+            <button role="tab" aria-selected={view === "all"} onClick={() => setView("all")}>
+              All
+            </button>
+            <button role="tab" aria-selected={view === "saved"} onClick={() => setView("saved")}>
+              Saved
+            </button>
           </div>
-          <div className="toolbar">
-            <FilterBar
-              filters={filters}
-              spec={spec}
-              regions={config?.regions ?? {}}
-              countries={config?.countries ?? []}
-              onFilters={changeFilters}
-              onSpec={changeSpec}
-            />
-            <Popover trigger={<><ArrowDownWideNarrow size={14} /> {SORTS[sort]} <ChevronDown size={14} /></>}>
-              {(close) => (
-                <div className="panel-body options column">
-                  {(Object.keys(SORTS) as Sort[]).map((k) => (
-                    <button
-                      key={k}
-                      className={sort === k ? "on" : ""}
-                      onClick={() => {
-                        setSort(k);
-                        close();
-                      }}
-                    >
-                      {SORTS[k]}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </Popover>
-          </div>
+          <Menu align="right" label={`Sort: ${SORTS[sort]}`} trigger={<><span className="sort-label">{SORTS[sort]}</span><ArrowUpDown className="sort-icon" size={14} /> <ChevronDown className="sort-chevron" size={14} /></>}>
+            {(close) =>
+              (Object.keys(SORTS) as Sort[]).map((k) => (
+                <button
+                  key={k}
+                  className="menu-row"
+                  role="menuitemradio"
+                  aria-checked={sort === k}
+                  onClick={() => {
+                    setSort(k);
+                    close();
+                  }}
+                >
+                  {SORTS[k]}
+                </button>
+              ))
+            }
+          </Menu>
         </header>
 
-        {results.length === 0 ? (
-          view === "saved" ? (
-            <Empty title="Nothing saved yet" body="Bookmark people from the results to keep them here across searches." />
-          ) : busy && all.length === 0 && spec.criteria.length > 0 ? (
-            <div className="skeletons">
-              {Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="card skeleton" />
-              ))}
-            </div>
-          ) : all.length > 0 ? (
-            <Empty title="No one matches these filters" body="Loosen the location, rate or rating filters, or ask the agent to search further." />
+        <FilterBar filters={filters} spec={spec} regions={config?.regions ?? {}} countries={config?.countries ?? []} onFilters={changeFilters} onSpec={changeSpec} />
+
+        <div className="list-scroll">
+          {results.length === 0 ? (
+            view === "saved" ? (
+              <Empty title="Nothing saved yet" body="Save people from the results and they stay here across searches." />
+            ) : busy && all.length === 0 ? (
+              <div className="list">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <div key={i} className="skeleton" />
+                ))}
+              </div>
+            ) : all.length > 0 ? (
+              <Empty title="No one matches these filters" body="Remove a filter above, or ask in the chat to search further." />
+            ) : (
+              <Empty title="No search yet" body="Describe the job in the chat. Candidates appear here as they're found, ranked by the work they've delivered for clients." />
+            )
           ) : (
-            <Empty
-              icon
-              title="Find people who've done your kind of work before"
-              body="Describe the project in the chat. The agent searches Freelancer.com from several angles, screens everyone's past client work, reads the strongest profiles, and ranks the list by proven experience in your niche."
-            />
-          )
-        ) : (
-          <ol className="list">
-            {results.slice(0, shown).map(({ f, r }, i) => (
-              <ResultCard
-                key={f.id}
-                rank={i + 1}
-                freelancer={f}
-                ranking={r}
-                criteria={spec.criteria}
-                saved={Boolean(saved[f.id])}
-                onToggleSave={() =>
-                  setSaved((s) => {
-                    const next = { ...s };
-                    if (next[f.id]) delete next[f.id];
-                    else next[f.id] = { freelancer: f, ranking: r };
-                    return next;
-                  })
-                }
-              />
-            ))}
-          </ol>
-        )}
-        {results.length > shown && (
-          <button className="more" onClick={() => setShown((n) => n + PAGE)}>
-            Show more ({results.length - shown} left)
-          </button>
-        )}
-      </main>
+            <ol className="list">
+              {results.slice(0, shown).map(({ f, r }) => (
+                <ResultRow key={f.id} freelancer={f} ranking={r} criteria={spec.criteria} saved={Boolean(saved[f.id])} onToggleSave={toggleSave} />
+              ))}
+            </ol>
+          )}
+          {results.length > shown && (
+            <button className="outline-button more" onClick={() => setShown((n) => n + PAGE)}>
+              Show {Math.min(PAGE, results.length - shown)} more
+            </button>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
 
-function Empty({ title, body, icon }: { title: string; body: string; icon?: boolean }) {
+function Empty({ title, body }: { title: string; body: string }) {
   return (
     <div className="empty">
-      {icon && (
-        <span className="empty-icon">
-          <Search size={20} />
-        </span>
-      )}
       <h2>{title}</h2>
       <p>{body}</p>
     </div>
@@ -345,19 +333,14 @@ function Empty({ title, body, icon }: { title: string; body: string; icon?: bool
 function Setup({ missing }: { missing: string[] }) {
   return (
     <div className="setup">
-      <div className="setup-card">
-        <span className="orb" aria-hidden />
-        <h1>Talent Scout needs its API keys</h1>
-        <p>The search is run by an AI agent and every candidate is screened by Jev, so these must be set in <code>freelancer-search/.env</code>:</p>
-        <ul>
-          {missing.map((m) => (
-            <li key={m}>
-              <code>{m}</code>
-            </li>
-          ))}
-        </ul>
-        <p className="muted">See <code>.env.example</code>, then restart the server.</p>
-      </div>
+      <h1>Add the API keys to start</h1>
+      <p>The search is run by an AI agent and every candidate is screened by Jev. Set these in freelancer-search/.env, then restart the server:</p>
+      <ul>
+        {missing.map((m) => (
+          <li key={m}>{m}</li>
+        ))}
+      </ul>
+      <p>.env.example lists every setting.</p>
     </div>
   );
 }
