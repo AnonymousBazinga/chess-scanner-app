@@ -179,7 +179,7 @@ async function startCamera() {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1920 } }, audio: false,
     });
-    if (stack.at(-1) !== 'view-scan') return stopCamera();
+    if (stack.at(-1) !== 'view-scan' || busy) return stopCamera();
     video.srcObject = stream;
     await video.play().catch(() => {});
     setCameraOn(true);
@@ -202,37 +202,70 @@ function setCameraOn(on) {
 }
 
 let busy = false;
-let scanPhotoURL = null;
+let scanTimer;
+let scanStarted = 0;
 
-function setProcessing(on, photoURL) {
+function setProcessing(on) {
   busy = on;
   finder.classList.toggle('processing', on);
-  finder.classList.toggle('has-photo', on && !!photoURL);
-  if (photoURL) $('scan-photo').src = photoURL;
-  $('scan-hint').textContent = on ? 'Reading the board…' : 'Fit the whole board inside the frame';
+  finder.setAttribute('aria-busy', String(on));
+  $('scan-hint').textContent = on ? 'Preparing scanner…' : 'Fit the whole board inside the frame';
+  $('scan-detail').hidden = !on;
   $('btn-shutter').disabled = on || !stream;
+  $('file-input').disabled = on;
+  $('btn-manual').disabled = on;
+  $('btn-history').disabled = on;
+  document.querySelector('[data-testid="scan-gallery"]').setAttribute('aria-disabled', String(on));
+  clearInterval(scanTimer);
+  if (on) {
+    scanStarted = performance.now();
+    const update = () => {
+      const seconds = Math.floor((performance.now() - scanStarted) / 1000);
+      $('scan-detail').textContent = `${seconds ? `${seconds}s · ` : ''}Your photo stays on this device`;
+    };
+    update();
+    scanTimer = setInterval(update, 1000);
+  } else {
+    finder.classList.remove('has-photo');
+    $('scan-photo').removeAttribute('src');
+  }
 }
 
-async function scan(source, crop, photoURL) {
-  setProcessing(true, photoURL);
+// Let the captured-photo overlay paint before preparing pixels or loading the model.
+const nextPaint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+async function scan(prepare) {
+  if (busy) return;
+  setProcessing(true);
   stopCamera();
-  const started = performance.now();
+  let source, photoURL;
+  let succeeded = false;
   try {
+    await nextPaint();
+    ({ source, photoURL } = await prepare());
+    $('scan-photo').src = photoURL;
+    finder.classList.add('has-photo');
     await loadRecognizer((p) => {
-      if (p < 1) $('scan-hint').textContent = `Downloading scanner… ${Math.round(p * 100)}%`;
-      else $('scan-hint').textContent = 'Reading the board…';
+      $('scan-hint').textContent = p < 1
+        ? `Downloading scanner · ${Math.round(p * 100)}%`
+        : 'Preparing scanner…';
     });
-    const fen = await recognize(source, crop);
-    // Let the scan animation read as a deliberate step.
-    await new Promise((r) => setTimeout(r, Math.max(0, 700 - (performance.now() - started))));
+    $('scan-hint').textContent = 'Reading the pieces…';
+    await nextPaint();
+    const fen = await recognize(source);
+    $('scan-hint').textContent = 'Board ready';
+    // A brief settling state makes the transition into the editor easy to follow.
+    await new Promise((r) => setTimeout(r, 250));
     vibrate(12);
     openEditor(fen, photoURL, true);
+    succeeded = true;
   } catch (e) {
     console.error(e);
     toast(e.message || 'Board recognition failed');
   } finally {
+    source?.close?.();
+    if (!succeeded && photoURL) URL.revokeObjectURL(photoURL);
     setProcessing(false);
-    finder.classList.remove('has-photo');
     if (stack.at(-1) === 'view-scan') { cameraWanted = true; startCamera(); }
   }
 }
@@ -240,28 +273,29 @@ async function scan(source, crop, photoURL) {
 $('btn-shutter').addEventListener('click', () => {
   if (!stream || busy) return;
   vibrate(10);
-  // The viewfinder shows the centered square of the video (object-fit: cover).
+  // Copy the visible camera frame before stopping the stream.
   const w = video.videoWidth, h = video.videoHeight, side = Math.min(w, h);
-  const crop = { x: (w - side) / 2, y: (h - side) / 2, w: side, h: side };
+  if (!side) return;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = side;
-  canvas.getContext('2d').drawImage(video, crop.x, crop.y, side, side, 0, 0, side, side);
-  canvas.toBlob((blob) => {
-    const url = URL.createObjectURL(blob);
-    scan(canvas, null, url);
-  }, 'image/jpeg', 0.92);
+  canvas.getContext('2d').drawImage(video, (w - side) / 2, (h - side) / 2, side, side, 0, 0, side, side);
+  scan(async () => {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (!blob) throw new Error("Couldn't capture that photo. Please try again.");
+    return { source: canvas, photoURL: URL.createObjectURL(blob) };
+  });
 });
 
-$('file-input').addEventListener('change', async (e) => {
+$('file-input').addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   e.target.value = '';
   if (!file || busy) return;
-  try {
-    const bitmap = await createImageBitmap(file); // applies EXIF orientation
-    scan(bitmap, null, URL.createObjectURL(file));
-  } catch {
-    toast("Couldn't open that image");
-  }
+  scan(async () => {
+    let bitmap;
+    try { bitmap = await createImageBitmap(file); } // applies EXIF orientation
+    catch { throw new Error("Couldn't open that image"); }
+    return { source: bitmap, photoURL: URL.createObjectURL(file) };
+  });
 });
 
 $('btn-manual').addEventListener('click', () => openEditor(START_FEN, null, false));

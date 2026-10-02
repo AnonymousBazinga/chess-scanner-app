@@ -138,10 +138,29 @@ await test('landing and camera', async () => {
 
 await test('scan a photo from the library', async () => {
   const started = Date.now();
+  await page.evaluate(() => {
+    window.scanFrames = [];
+    let previous;
+    const tick = (now) => {
+      if (document.querySelector('#view-editor[data-active]')) return;
+      const reading = document.querySelector('#scan-hint').textContent === 'Reading the pieces…';
+      if (reading && previous != null) window.scanFrames.push(now - previous);
+      previous = reading ? now : null;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
   await page.setInputFiles('#file-input', FIXTURE);
   await page.waitForSelector('#viewfinder.processing', { timeout: 5000 });
+  assert(await page.locator('#btn-manual').isDisabled(), 'manual setup must not interrupt a scan');
+  assert(await page.locator('#file-input').isDisabled(), 'a second upload must not interrupt a scan');
   await screenshot('scanning');
   await view('view-editor', 240000);
+  const frames = await page.evaluate(() => window.scanFrames);
+  timings.longestRecognitionFrameMs = Math.round(Math.max(0, ...frames));
+  assert(frames.length > 2, 'the UI did not animate while reading the board');
+  assert(timings.longestRecognitionFrameMs < 1000, `UI froze for ${timings.longestRecognitionFrameMs}ms during recognition`);
+  assert(await page.locator('#viewfinder').getAttribute('aria-busy') === 'false', 'scan busy state did not reset');
   timings.firstScanSeconds = (Date.now() - started) / 1000;
   const placement = await readPlacement();
   fs.writeFileSync(path.join(OUT, 'recognized-placement.txt'), `${placement}\nexpected: ${FIXTURE_PLACEMENT}\n`);
