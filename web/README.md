@@ -49,16 +49,18 @@ PYTHONPATH=web python3 -m unittest discover -s web/tests
 python3 -m unittest discover -s benchmark/vision_eval -p 'test*.py'
 ```
 
-The original local prototype is preserved in `benchmark/vision_eval/` for
+The original local prototype is preserved in [`benchmark/vision_eval/`](../benchmark/vision_eval/README.md) for
 reproducibility. Its `serve_structured.py` defaults to the original temporary
 model paths; provide `--source` and `--weights` for another installation.
 The evaluation README records historical experiments, partial reference labels,
 held-out tests and their limitations. Hosted release evidence belongs in
-`DEPLOYMENT.md` alongside this file.
+[`DEPLOYMENT.md`](DEPLOYMENT.md) alongside this file. See the [web changelog](CHANGELOG.md)
+for release changes.
 
 ## Licenses and source
 
-See `licenses/` and `scanner_backend/vendor/README.md`. ChessQueries code and
+See `licenses/`, the [runtime overview](scanner_backend/README.md), and the
+[vendored source provenance](scanner_backend/vendor/README.md). ChessQueries code and
 weights are PolyForm Noncommercial 1.0.0; this personal app is noncommercial.
 Fenify is MIT. The CameraChessWeb-derived preprocessing is AGPL-3.0; corresponding
 source is available in this repository and linked from the app's About panel.

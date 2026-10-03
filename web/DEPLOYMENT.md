@@ -20,6 +20,13 @@ Validation completed so far:
 - 8 original geometry/chess-constraint regression tests.
 - JavaScript module syntax checks and whitespace checks.
 - Independent release review; identified issues fixed and tested.
+- Local packaging checks matched all seven original prototype placements
+  ([saved parity results](tests/release-parity.json)); this checks packaging consistency,
+  not correctness of every prediction.
+- The packaged runtime also returned 12/12 exact placements on the previously used
+  CVChess confirmation positions after 2048-pixel upload preprocessing
+  ([saved confirmation results](tests/confirmation-parity.json)). These repeat known
+  evaluation positions, rather than adding a new independent accuracy sample.
 
 The original six diagnostic photos include four with only partial reference
 labels. Their confirmed errors fell from 56 with Fenify to 9 with the structured
@@ -33,11 +40,13 @@ not establish universal reliability or independent generalization.
 Hosted preview evidence:
 
 - Preview: https://chess-scanner-gd409eu4j-anonymousbazingas-projects.vercel.app
+- Deployment ID: `dpl_EL4Zb9YABYkh8UbmxfckvvVMxep8`.
 - Latest photo (7): exact placement; 27.844 s inference / 39.033 s cold HTTP request.
 - Three further sequential requests (photos 2, 5, 7) all returned HTTP 200 and
   matched original prototype placements. Inference took 25.9–35.2 s; total command
   time including CLI/auth/network was 43.0–54.8 s.
 - These are parity checks, not claims that every original prediction is correct.
+  [Saved preview responses](tests/preview-results.json) preserve the returned placements.
 - The earlier all-FP16 compute deployment took 130.5 s for photo 7 and was rejected.
   Block-wise FP32 computation preserves original checkpoint values and is faster.
 

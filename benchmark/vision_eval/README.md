@@ -1,5 +1,5 @@
 > Release packaging (2026-10-02): the structured recognizer is now being integrated
-> into the Vercel app. See `../../web/DEPLOYMENT.md` for verified release status and
+> into the Vercel app. See [release validation](../../web/DEPLOYMENT.md) for verified release status and
 > hosted precision-parity checks. Historical local-only results below are preserved.
 
 # Two-image scanner evaluation — October 2, 2026
