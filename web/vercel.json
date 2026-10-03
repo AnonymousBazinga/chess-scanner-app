@@ -1,7 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": null,
+  "buildCommand": "python3 scripts/build.py",
   "installCommand": null,
-  "outputDirectory": "."
+  "outputDirectory": "public",
+  "functions": {
+    "api/recognize.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{public/**,qa/**,tests/**,vendor/**,pieces/**,js/**,licenses/**,scripts/**}"
+    }
+  }
 }

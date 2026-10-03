@@ -1,5 +1,10 @@
-// Runs model loading and inference in a worker, leaving the camera UI responsive.
+// Vercel uses the structured API; the static demo uses a browser worker.
 const SIZE = 644;
+// Keep the original local experiment servers available for comparisons.
+const localHybrid = ['localhost', '127.0.0.1'].includes(location.hostname)
+  && ['hybrid', 'structured'].includes(new URLSearchParams(location.search).get('scanner'));
+// GitHub Pages remains a static, browser-only demo; Vercel uses the new service.
+export const usesServer = !location.hostname.endsWith('.github.io');
 let worker;
 let ready;
 let latestProgress = null;
@@ -50,6 +55,8 @@ function request(type, input) {
 
 /** Subscribers also get progress from a preload that is already in flight. */
 export async function loadRecognizer(onProgress) {
+  if (localHybrid) return (await import('./recognizer-local.js')).loadRecognizer(onProgress);
+  if (usesServer) return (await import('./recognizer-server.js')).loadRecognizer(onProgress);
   if (onProgress) {
     listeners.add(onProgress);
     if (latestProgress != null) onProgress(latestProgress);
@@ -67,6 +74,8 @@ export async function loadRecognizer(onProgress) {
 }
 
 export async function recognize(source, crop) {
+  if (localHybrid) return (await import('./recognizer-local.js')).recognize(source, crop);
+  if (usesServer) return (await import('./recognizer-server.js')).recognize(source, crop);
   await loadRecognizer();
   return request('recognize', preprocess(source, crop));
 }

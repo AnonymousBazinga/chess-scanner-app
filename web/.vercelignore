@@ -1,1 +1,5 @@
 qa/
+public/
+**/__pycache__/
+scanner_backend/weights/
+tests/

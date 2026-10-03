@@ -1,0 +1,27 @@
+[
+  {
+    "name": "chessqueries-vitl-644-safetensors-fp16-r1.safetensors",
+    "url": "https://huggingface.co/joelseytre/chessqueries/resolve/529059bd7f00c3b7d39ecdf6cc2fef5d039fc3cf/chessqueries-vitl-644-safetensors-fp16-r1.safetensors",
+    "sha256": "45edb69bf156f94299256fc51d1c75805f1de745ecfe34dc0615ef21265ab506"
+  },
+  {
+    "name": "cq-vit-s-644-v4-seed2-safetensors-fp16-r2.safetensors",
+    "url": "https://huggingface.co/joelseytre/chessq-lite/resolve/1ab6184424da31dcdcc646ec0748e954315975ea/cq-vit-s-644-v4-seed2-safetensors-fp16-r2.safetensors",
+    "sha256": "fd269bcfdefe6208b75490d7ac72524c0970f8212470a88012ce755b5f092d10"
+  },
+  {
+    "name": "fenify.pt",
+    "url": "https://raw.githubusercontent.com/AnonymousBazinga/chess-scanner-app/1a79b686a8a451eb541111f14527f49f6b731d90/fenify-3D/model.pt",
+    "sha256": "c1e52032767ad279175d22b934e99928463cc0e73b397305aa97e2a0cba6cc56"
+  },
+  {
+    "name": "480L_leyolo_xcorners.onnx",
+    "local": "scanner_backend/detectors/480L_leyolo_xcorners.onnx",
+    "sha256": "ca02560b18d8321b485e97cbd7137eccde2f20822073cf8974a417f493540a5a"
+  },
+  {
+    "name": "480M_leyolo_pieces.onnx",
+    "local": "scanner_backend/detectors/480M_leyolo_pieces.onnx",
+    "sha256": "ec3397bbe535781c093d75e9643ebdda0f39216665d6d985af845cbd1a919cb6"
+  }
+]

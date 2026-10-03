@@ -2,7 +2,7 @@ import { Board } from './board.js';
 import {
   Chess, START_FEN, parsePlacement, placementOf, buildFEN, validationIssues, illegalSquares, isWhite, colorName,
 } from './position.js';
-import { loadRecognizer, recognize } from './recognizer.js';
+import { loadRecognizer, recognize, usesServer } from './recognizer.js';
 import { Engine, scoreText, winChance } from './engine.js';
 
 const $ = (id) => document.getElementById(id);
@@ -153,9 +153,14 @@ $('btn-clear-history').addEventListener('click', () => {
   if (confirm('Delete all saved positions?')) { history.clear(); renderHistory(); }
 });
 
+if (!usesServer) $('scan-privacy').textContent = 'Photos are processed in your browser and never uploaded.';
+
 const CREDITS = [
+  ['Structured scanner source', 'Automatic board geometry, model fusion and chess constraints. CameraChessWeb-derived preprocessing is AGPL-3.0; model weights retain their own licenses.', 'Source and license notices', 'https://github.com/AnonymousBazinga/chess-scanner-app/tree/web-version/web/scanner_backend'],
+  ['Fenify-3D', 'Board recognition by Logan Spears.', 'MIT License', './licenses/Fenify-3D.txt'],
+  ['CameraChessWeb', 'LeYOLO piece/grid detection and preprocessing by Pbatch.', 'GNU AGPL v3', './licenses/CameraChessWeb.txt'],
   ['Stockfish', 'Chess engine by the Stockfish developers; WASM build by Nathan Rugg and Chess.com.', 'GNU GPL v3', 'https://github.com/nmrugg/stockfish.js'],
-  ['ChessQ Lite', 'Board recognition model. Copyright (c) 2026 Joël Seytre.', 'PolyForm Noncommercial 1.0.0', 'https://chessq.org'],
+  ['ChessQueries + ChessQ Lite V4', 'Board recognition models. Copyright (c) 2026 Joël Seytre.', 'PolyForm Noncommercial 1.0.0', 'https://chessq.org'],
   ['DINOv2', 'Image encoder in ChessQ Lite. Copyright (c) Meta Platforms, Inc. and affiliates.', 'Apache License 2.0', 'https://github.com/facebookresearch/dinov2'],
   ['Chess pieces', 'cburnett piece set by Colin M.L. Burnett.', 'CC BY-SA 3.0', 'https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces'],
   ['chess.js', 'Move generation and validation.', 'BSD 2-Clause', 'https://github.com/jhlywa/chess.js'],
@@ -221,7 +226,7 @@ function setProcessing(on) {
     scanStarted = performance.now();
     const update = () => {
       const seconds = Math.floor((performance.now() - scanStarted) / 1000);
-      $('scan-detail').textContent = `${seconds ? `${seconds}s · ` : ''}Your photo stays on this device`;
+      $('scan-detail').textContent = `${seconds ? `${seconds}s · ` : ''}${usesServer ? 'Photo processed securely · not stored' : 'Your photo stays on this device'}`;
     };
     update();
     scanTimer = setInterval(update, 1000);
@@ -252,12 +257,13 @@ async function scan(prepare) {
     });
     $('scan-hint').textContent = 'Reading the pieces…';
     await nextPaint();
-    const fen = await recognize(source);
+    const result = await recognize(source);
+    const fen = typeof result === 'string' ? result : result.fen;
     $('scan-hint').textContent = 'Board ready';
     // A brief settling state makes the transition into the editor easy to follow.
     await new Promise((r) => setTimeout(r, 250));
     vibrate(12);
-    openEditor(fen, photoURL, true);
+    openEditor(fen, photoURL, true, typeof result === 'object' ? result.review_squares : []);
     succeeded = true;
   } catch (e) {
     console.error(e);
@@ -331,7 +337,7 @@ editor.view = new Board($('editor-board'), {
   },
 });
 
-function openEditor(fen, photoURL, scanned) {
+function openEditor(fen, photoURL, scanned, reviewSquares = []) {
   const [placement, side] = fen.split(' ');
   editor.board = parsePlacement(placement);
   editor.side = side === 'b' ? 'b' : 'w';
@@ -339,6 +345,9 @@ function openEditor(fen, photoURL, scanned) {
   editor.brush = null;
   editor.photo = photoURL;
   editor.scanned = scanned;
+  const review = Array.isArray(reviewSquares) ? reviewSquares.filter(s => /^[a-h][1-8]$/.test(s)) : [];
+  $('scan-review').hidden = !scanned;
+  $('scan-review').textContent = 'Check the pieces and orientation before analyzing.' + (review.length ? ` Take a closer look at ${review.join(', ')}.` : '');
   $('btn-photo').hidden = !photoURL;
   if (photoURL) $('editor-thumb').src = photoURL;
   editor.view.setPosition(editor.board, { animate: false });
