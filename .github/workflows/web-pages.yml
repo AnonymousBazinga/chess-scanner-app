@@ -1,0 +1,36 @@
+name: Publish web version
+
+# Publishes web/ to the gh-pages branch, which GitHub Pages serves at
+# https://<owner>.github.io/<repo>/ (Settings → Pages → Deploy from a branch → gh-pages).
+
+on:
+  push:
+    branches: [web-version]
+    paths: ["web/**", ".github/workflows/web-pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: web-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push site to gh-pages
+        run: |
+          mkdir -p build/site
+          rsync -a --exclude qa web/ build/site/
+          touch build/site/.nojekyll
+          cd build/site
+          git init -q -b gh-pages
+          git add -A
+          git -c user.name="Web publish" -c user.email="web@users.noreply.github.com" \
+            commit -qm "Publish ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}

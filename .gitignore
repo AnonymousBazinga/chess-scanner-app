@@ -7,3 +7,11 @@ xcuserdata/
 ChessScannerUITests/Fixtures/expected.json
 ChessScanner/Resources/NNUE/
 ChessScanner/Resources/Models/
+web/qa/node_modules/
+web/qa/out/
+__pycache__/
+*.pyc
+web/.vercel/
+web/.env*
+web/public/
+web/scanner_backend/weights/

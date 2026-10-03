@@ -1,0 +1,7 @@
+{
+  "name": "chess-scanner-web-qa",
+  "private": true,
+  "type": "module",
+  "scripts": { "qa": "node qa.mjs" },
+  "devDependencies": { "playwright": "1.56.1" }
+}

@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-02",
+  "environment": "macOS CPU, four threads",
+  "comparisons": [
+    {
+      "image": 1,
+      "placement": "rnbqk1nr/2p2p2/3p3p/1p2p3/2P2P2/N3P2N/B2P3P/R1BKQ1NR",
+      "matches_original": true,
+      "seconds": 6.506
+    },
+    {
+      "image": 2,
+      "placement": "r2q1rk1/pbp2pbp/1pn1pnp1/3p4/4P3/1PNP1NP1/PBP2PBP/R2Q1RK1",
+      "matches_original": true,
+      "seconds": 5.184
+    },
+    {
+      "image": 3,
+      "placement": "r2q1bnr/p1kpppbp/ppn5/2p5/3P2Q1/4P3/PPP2PPP/RNB1KBNR",
+      "matches_original": true,
+      "seconds": 5.132
+    },
+    {
+      "image": 4,
+      "placement": "r4rk1/p1q3p1/8/8/8/7P/1P4N1/2KR4",
+      "matches_original": true,
+      "seconds": 4.461
+    },
+    {
+      "image": 5,
+      "placement": "2N4r/P3r1k1/P1b4P/4P3/1N6/P1p1p1Rp/1P1P4/2K1R2n",
+      "matches_original": true,
+      "seconds": 4.543
+    },
+    {
+      "image": 6,
+      "placement": "r1r2bkq/ppp2pp1/2n2n2/7p/6Pp/1P3N2/PpP1PP1P/1NRQ1BKB",
+      "matches_original": true,
+      "seconds": 4.383
+    },
+    {
+      "image": 7,
+      "placement": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR",
+      "matches_original": true,
+      "seconds": 5.319
+    }
+  ],
+  "note": "Parity against frozen prototype output, not a new ground-truth accuracy score."
+}

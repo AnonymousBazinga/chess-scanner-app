@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-02",
+  "url": "https://chess-scanner-app.vercel.app",
+  "deployment": "dpl_GcjJQfz9eyQjak1XKTcivcVvUGpu",
+  "runtime_commit": "1e554b38a605af034a3bd294f0d6d8cff02b188b",
+  "image": 7,
+  "via": "Photos file chooser; read rendered DOM pieces and square coordinates",
+  "squares": 64,
+  "pieces": 32,
+  "reference_mismatches": 0,
+  "placement": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR",
+  "analysis_handoff": true
+}

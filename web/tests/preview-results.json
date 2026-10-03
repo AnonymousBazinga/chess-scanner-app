@@ -1,0 +1,336 @@
+{
+  "date": "2026-10-02",
+  "deployment": "https://chess-scanner-gd409eu4j-anonymousbazingas-projects.vercel.app",
+  "cold_photo7": {
+    "placement": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR",
+    "fen": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR w - - 0 1",
+    "seconds": 27.844,
+    "method": "structured-visual-v2",
+    "experimental": true,
+    "photo_placement": "RNBKQBNR/PPPPPPP1/7P/6b1/4p3/3p4/ppp2ppp/rn1kqbnr",
+    "canonical_rotation_ccw": 180,
+    "geometry": {
+      "corners": [
+        [
+          339.81787109375,
+          74.76100158691406
+        ],
+        [
+          1026.978271484375,
+          77.58830261230469
+        ],
+        [
+          1045.6973876953125,
+          779.5477905273438
+        ],
+        [
+          321.64874267578125,
+          777.142578125
+        ]
+      ],
+      "inliers": 49,
+      "detected_points": 49,
+      "median_reprojection_px": 0.7668222784996033,
+      "max_reprojection_px": 1.989528775215149,
+      "status": "ok"
+    },
+    "details": {
+      "components": [
+        {
+          "name": "fenify_2",
+          "geometry_cost": 0.4722412109375,
+          "align_ccw": 0,
+          "weight": 0.35658410539028473
+        },
+        {
+          "name": "v4_0",
+          "geometry_cost": 0.3,
+          "align_ccw": 2,
+          "weight": 0.3886544856572716
+        },
+        {
+          "name": "vitl_0",
+          "geometry_cost": 1.1447265625,
+          "align_ccw": 2,
+          "weight": 0.25476140895244365
+        }
+      ],
+      "constraint_rotation_ccw": 0,
+      "objective": 5.429057802524379,
+      "correction_cost": 0.055736036893972773,
+      "changed_indices": [
+        0,
+        30
+      ],
+      "optimal": true,
+      "orientation": "photo; game-facing direction not determined"
+    },
+    "review_squares": [
+      "a8",
+      "b8",
+      "e8",
+      "b7",
+      "b4",
+      "c1",
+      "d1",
+      "e1",
+      "h1"
+    ],
+    "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+    "revision": "811c56d066a7f5a288df2896bd7fe2ca7877908e"
+  },
+  "sequential_scans": [
+    {
+      "image": 2,
+      "http": "200",
+      "wall_seconds": 43.0,
+      "response": {
+        "placement": "r2q1rk1/pbp2pbp/1pn1pnp1/3p4/4P3/1PNP1NP1/PBP2PBP/R2Q1RK1",
+        "fen": "r2q1rk1/pbp2pbp/1pn1pnp1/3p4/4P3/1PNP1NP1/PBP2PBP/R2Q1RK1 w - - 0 1",
+        "seconds": 28.266,
+        "method": "structured-visual-v2",
+        "experimental": true,
+        "photo_placement": "r2q1rk1/pbp2pbp/1pn1pnp1/3p4/4P3/1PNP1NP1/PBP2PBP/R2Q1RK1",
+        "canonical_rotation_ccw": 0,
+        "geometry": {
+          "corners": [
+            [
+              215.0291290283203,
+              109.5209732055664
+            ],
+            [
+              991.077880859375,
+              111.23948669433594
+            ],
+            [
+              1045.3770751953125,
+              691.2409057617188
+            ],
+            [
+              162.2317657470703,
+              689.031005859375
+            ]
+          ],
+          "inliers": 49,
+          "detected_points": 49,
+          "median_reprojection_px": 0.7917575240135193,
+          "max_reprojection_px": 1.8893661499023438,
+          "status": "ok"
+        },
+        "details": {
+          "components": [
+            {
+              "name": "fenify_0",
+              "geometry_cost": 1.022119140625,
+              "align_ccw": 0,
+              "weight": 0.31165149204293136
+            },
+            {
+              "name": "v4_0",
+              "geometry_cost": 0.8999999999999999,
+              "align_ccw": 0,
+              "weight": 0.33127376599124325
+            },
+            {
+              "name": "vitl_0",
+              "geometry_cost": 0.75,
+              "align_ccw": 0,
+              "weight": 0.35707474196582534
+            }
+          ],
+          "constraint_rotation_ccw": 0,
+          "objective": 2.0362629240990637,
+          "correction_cost": 0.39544484018919257,
+          "changed_indices": [
+            34
+          ],
+          "optimal": true,
+          "orientation": "photo; game-facing direction not determined"
+        },
+        "review_squares": [
+          "c4"
+        ],
+        "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+        "revision": "811c56d066a7f5a288df2896bd7fe2ca7877908e"
+      }
+    },
+    {
+      "image": 5,
+      "http": "200",
+      "wall_seconds": 54.75,
+      "response": {
+        "placement": "2N4r/P3r1k1/P1b4P/4P3/1N6/P1p1p1Rp/1P1P4/2K1R2n",
+        "fen": "2N4r/P3r1k1/P1b4P/4P3/1N6/P1p1p1Rp/1P1P4/2K1R2n w - - 0 1",
+        "seconds": 35.219,
+        "method": "structured-visual-v2",
+        "experimental": true,
+        "photo_placement": "n2R1K2/4P1P1/pR1p1p1P/6N1/3P4/P4b1P/1k1r3P/r4N2",
+        "canonical_rotation_ccw": 180,
+        "geometry": {
+          "corners": [
+            [
+              102.9368667602539,
+              40.863128662109375
+            ],
+            [
+              284.3442687988281,
+              38.9282341003418
+            ],
+            [
+              285.4475402832031,
+              218.1785125732422
+            ],
+            [
+              104.32416534423828,
+              219.4684600830078
+            ]
+          ],
+          "inliers": 49,
+          "detected_points": 49,
+          "median_reprojection_px": 0.21940624713897705,
+          "max_reprojection_px": 0.5307375192642212,
+          "status": "ok"
+        },
+        "details": {
+          "components": [
+            {
+              "name": "fenify_0",
+              "geometry_cost": 1.557568359375,
+              "align_ccw": 0,
+              "weight": 0.3743382100454992
+            },
+            {
+              "name": "v4_2",
+              "geometry_cost": 1.8229736328125,
+              "align_ccw": 2,
+              "weight": 0.32781750193315967
+            },
+            {
+              "name": "vitl_0",
+              "geometry_cost": 2.01474609375,
+              "align_ccw": 2,
+              "weight": 0.29784428802134116
+            }
+          ],
+          "constraint_rotation_ccw": 0,
+          "objective": 9.473119379222156,
+          "correction_cost": 2.556122837479199,
+          "changed_indices": [
+            0,
+            5,
+            45,
+            47,
+            56
+          ],
+          "optimal": true,
+          "orientation": "photo; game-facing direction not determined"
+        },
+        "review_squares": [
+          "c8",
+          "d8",
+          "h8",
+          "c7",
+          "a6",
+          "c6",
+          "h6",
+          "e5",
+          "h4",
+          "a3",
+          "c3",
+          "g3",
+          "a2",
+          "e2",
+          "c1",
+          "e1",
+          "f1",
+          "h1"
+        ],
+        "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+        "revision": "811c56d066a7f5a288df2896bd7fe2ca7877908e"
+      }
+    },
+    {
+      "image": 7,
+      "http": "200",
+      "wall_seconds": 45.35,
+      "response": {
+        "placement": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR",
+        "fen": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR w - - 0 1",
+        "seconds": 25.911,
+        "method": "structured-visual-v2",
+        "experimental": true,
+        "photo_placement": "RNBKQBNR/PPPPPPP1/7P/6b1/4p3/3p4/ppp2ppp/rn1kqbnr",
+        "canonical_rotation_ccw": 180,
+        "geometry": {
+          "corners": [
+            [
+              339.81787109375,
+              74.76100158691406
+            ],
+            [
+              1026.978271484375,
+              77.58830261230469
+            ],
+            [
+              1045.6973876953125,
+              779.5477905273438
+            ],
+            [
+              321.64874267578125,
+              777.142578125
+            ]
+          ],
+          "inliers": 49,
+          "detected_points": 49,
+          "median_reprojection_px": 0.7668222784996033,
+          "max_reprojection_px": 1.989528775215149,
+          "status": "ok"
+        },
+        "details": {
+          "components": [
+            {
+              "name": "fenify_2",
+              "geometry_cost": 0.4722412109375,
+              "align_ccw": 0,
+              "weight": 0.35658410539028473
+            },
+            {
+              "name": "v4_0",
+              "geometry_cost": 0.3,
+              "align_ccw": 2,
+              "weight": 0.3886544856572716
+            },
+            {
+              "name": "vitl_0",
+              "geometry_cost": 1.1447265625,
+              "align_ccw": 2,
+              "weight": 0.25476140895244365
+            }
+          ],
+          "constraint_rotation_ccw": 0,
+          "objective": 5.429057802524379,
+          "correction_cost": 0.055736036893972773,
+          "changed_indices": [
+            0,
+            30
+          ],
+          "optimal": true,
+          "orientation": "photo; game-facing direction not determined"
+        },
+        "review_squares": [
+          "a8",
+          "b8",
+          "e8",
+          "b7",
+          "b4",
+          "c1",
+          "d1",
+          "e1",
+          "h1"
+        ],
+        "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+        "revision": "811c56d066a7f5a288df2896bd7fe2ca7877908e"
+      }
+    }
+  ]
+}

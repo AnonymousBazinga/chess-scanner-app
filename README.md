@@ -11,6 +11,9 @@ An iOS app that turns a photo of a chess board into a position you can analyze w
 3. **Analyze**: Stockfish 17 runs on device with an evaluation bar, the top three lines, a
    best-move arrow, and a playable board.
 
+For the browser app, see the [web setup and recognition guide](web/README.md),
+[release validation](web/DEPLOYMENT.md), and [web changelog](web/CHANGELOG.md).
+
 ## Building
 
 ```sh
