@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-02",
+  "url": "https://chess-scanner-app.vercel.app/api/recognize",
+  "image": 2,
+  "http_status": 200,
+  "http_seconds": 37.644084,
+  "reference_mismatches": 0,
+  "response": {
+    "placement": "r2q1rk1/pbp2pbp/1pn1pnp1/3p4/4P3/1PNP1NP1/PBP2PBP/R2Q1RK1",
+    "fen": "r2q1rk1/pbp2pbp/1pn1pnp1/3p4/4P3/1PNP1NP1/PBP2PBP/R2Q1RK1 w - - 0 1",
+    "seconds": 27.375,
+    "method": "structured-visual-v2",
+    "experimental": true,
+    "photo_placement": "r2q1rk1/pbp2pbp/1pn1pnp1/3p4/4P3/1PNP1NP1/PBP2PBP/R2Q1RK1",
+    "canonical_rotation_ccw": 0,
+    "geometry": {
+      "corners": [
+        [
+          215.0291290283203,
+          109.5209732055664
+        ],
+        [
+          991.077880859375,
+          111.23948669433594
+        ],
+        [
+          1045.3770751953125,
+          691.2409057617188
+        ],
+        [
+          162.2317657470703,
+          689.031005859375
+        ]
+      ],
+      "inliers": 49,
+      "detected_points": 49,
+      "median_reprojection_px": 0.7917575240135193,
+      "max_reprojection_px": 1.8893661499023438,
+      "status": "ok"
+    },
+    "details": {
+      "components": [
+        {
+          "name": "fenify_0",
+          "geometry_cost": 1.022119140625,
+          "align_ccw": 0,
+          "weight": 0.31165149204293136
+        },
+        {
+          "name": "v4_0",
+          "geometry_cost": 0.8999999999999999,
+          "align_ccw": 0,
+          "weight": 0.33127376599124325
+        },
+        {
+          "name": "vitl_0",
+          "geometry_cost": 0.75,
+          "align_ccw": 0,
+          "weight": 0.35707474196582534
+        }
+      ],
+      "constraint_rotation_ccw": 0,
+      "objective": 2.0362629240990637,
+      "correction_cost": 0.39544484018919257,
+      "changed_indices": [
+        34
+      ],
+      "optimal": true,
+      "orientation": "photo; game-facing direction not determined"
+    },
+    "review_squares": [
+      "c4"
+    ],
+    "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+    "revision": "1e554b38a605af034a3bd294f0d6d8cff02b188b"
+  }
+}

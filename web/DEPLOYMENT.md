@@ -1,6 +1,6 @@
 # Hosted structured scanner — 2026-10-02
 
-Status: preview model validation passed; production promotion pending.
+Status: live on https://chess-scanner-app.vercel.app; production browser upload verified.
 
 The runtime is isolated from benchmark references and provider credentials. The
 five model assets are pinned by SHA256 in `scanner_backend/models.json`. The
@@ -50,4 +50,22 @@ Hosted preview evidence:
 - The earlier all-FP16 compute deployment took 130.5 s for photo 7 and was rejected.
   Block-wise FP32 computation preserves original checkpoint values and is faster.
 
-Production URL and browser verification will be recorded after promotion.
+Production verification:
+
+- URL: https://chess-scanner-app.vercel.app
+- Deployment: `dpl_GcjJQfz9eyQjak1XKTcivcVvUGpu`.
+- Runtime source: `1e554b38a605af034a3bd294f0d6d8cff02b188b`; the public API reports
+  that exact revision and `structured-visual-v2`.
+- Uploaded the seventh supplied image through the production Photos control.
+  Read back the rendered board from the DOM: 64 squares, 32 pieces, zero differences
+  against the independently recorded reference. Analyze opened the matching FEN.
+- A screenshot is retained locally in ignored QA output at
+  `qa/out/production-scanner-20261002.jpg`.
+- Stockfish reached depth 22 and displayed three analysis lines; browser console
+  had no errors. Screenshot: `qa/out/production-analysis-20261002.jpg`.
+- A second production API scan (photo 2) returned the exact reference position,
+  HTTP 200, 27.375 s inference / 37.644 s HTTP time, with the correct source revision
+  ([saved response](tests/production-api.json)).
+- [Browser verification record](tests/production-browser.json).
+- No paid hosting plan or vision API service was added.
+
