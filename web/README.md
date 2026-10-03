@@ -4,6 +4,8 @@ Production: https://chess-scanner-app.vercel.app
 
 The Vercel scanner uses the structured Python recognizer: Fenify-3D, ChessQ Lite
 V4, ChessQueries ViT-L, LeYOLO piece/grid detection and joint chess constraints.
+Unused model views are skipped: missing-grid fallback runs only V4, and rotation
+searches stop at an exact-zero geometry score. Fenify and ViT-L load on demand.
 The browser sends a resized photo to `/api/recognize`. The API processes it in
 memory without saving it. Stockfish and the position editor remain in the browser.
 GitHub Pages retains the previous browser-only recognizer as a static demo.
@@ -55,7 +57,8 @@ model paths; provide `--source` and `--weights` for another installation.
 The evaluation README records historical experiments, partial reference labels,
 held-out tests and their limitations. Hosted release evidence belongs in
 [`DEPLOYMENT.md`](DEPLOYMENT.md) alongside this file. See the [web changelog](CHANGELOG.md)
-for release changes.
+for release changes. The [simplification audit](../benchmark/simplify/README.md)
+records 67/67 identical responses after pruning unused inference work.
 
 ## Licenses and source
 

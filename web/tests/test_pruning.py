@@ -41,3 +41,42 @@ class PruningTests(unittest.TestCase):
             result=fit_grid(Image.new('RGB',(1100,900)),detections)
         np.testing.assert_allclose(result['corners'],corners,atol=.01)
         self.assertEqual(result['inliers'],48)
+
+    @staticmethod
+    def stub_model():
+        model=StructuredRecognizer.__new__(StructuredRecognizer)
+        model.transform=lambda x:torch.zeros(3,4,4)
+        p=np.full((8,8,13),1e-6,dtype=np.float32);p[:,:,0]=.99
+        for i,c in [(3,12),(14,7),(49,1),(60,6)]:
+            p.reshape(64,13)[i]=1e-6;p.reshape(64,13)[i,c]=.99
+        p/=p.sum(-1,keepdims=True)
+        model.fenify=Mock(return_value=torch.from_numpy(p[::-1].copy()).reshape(1,64,13))
+        logits=torch.from_numpy(np.log(p)).reshape(1,64,13)
+        model.v4=Mock(return_value=logits);model.vitl=Mock(return_value=logits)
+        objects=[{'index':i,'piece':c,'confidence':.9} for i,c in [(3,'k'),(14,'p'),(49,'P'),(60,'K')]]
+        return model,p,objects
+
+    def test_zero_score_stops_each_rotation_search_at_first_tie(self):
+        model,p,objects=self.stub_model()
+        result=model.probabilities(Image.new('RGB',(80,60)),objects)
+        self.assertEqual(list(result),['fenify_0','v4_0','vitl_0'])
+        for network in (model.fenify,model.v4,model.vitl):network.assert_called_once()
+
+    def test_even_tiny_nonzero_score_keeps_searching(self):
+        model,p,objects=self.stub_model()
+        # No view with only four pieces can explain these five distinct objects.
+        objects.append({'index':25,'piece':'P','confidence':1e-12})
+        result=model.probabilities(Image.new('RGB',(80,60)),objects)
+        self.assertEqual(len(result),9)
+        self.assertEqual(model.fenify.call_count,4)
+        self.assertEqual(model.v4.call_count,4)
+        model.vitl.assert_called_once()
+
+    def test_models_stop_independently_after_a_later_perfect_view(self):
+        model,p,objects=self.stub_model()
+        wrong=p.copy();wrong[1,6]=p[0,0]
+        model.v4.side_effect=[torch.from_numpy(np.log(wrong)).reshape(1,64,13),torch.from_numpy(np.log(p)).reshape(1,64,13)]
+        result=model.probabilities(Image.new('RGB',(80,60)),objects)
+        self.assertEqual(list(result),['fenify_0','v4_0','vitl_0','v4_1'])
+        self.assertEqual(model.v4.call_count,2)
+        model.fenify.assert_called_once();model.vitl.assert_called_once()

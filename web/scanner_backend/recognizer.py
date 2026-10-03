@@ -9,7 +9,7 @@ import time
 import cv2,numpy as np,onnxruntime as ort,torch
 from PIL import ImageOps
 from torchvision.transforms import functional as TF
-from .chess_constraints import infer,CHARS
+from .chess_constraints import infer,align_view,CHARS
 from .vision_geometry import detect,fit_grid,LABELS
 from .notation import placement
 
@@ -46,18 +46,26 @@ class StructuredRecognizer:
         if not objects:
             x=self.transform(torch.from_numpy(np.array(image)).permute(2,0,1).float())[None]
             return {'v4_0':self.v4(x).softmax(-1).reshape(8,8,13).numpy()}
-        data={}
+        data={};pending={'fenify','v4'}
+        def record(group,rot,p):
+            name=f'{group}_{rot}';data[name]=p
+            # The original selector keeps the first minimum. Zero is a proven
+            # lower bound, so no later view can replace this one (even on ties).
+            if align_view(name,p,objects)['geometry_cost']==0:pending.discard(group)
         for rot in range(4):
+            if not pending:break
             im=image.rotate(90*rot,expand=True)
             # Match the frozen collector's explicit bilinear resize.
             from PIL import Image
-            x=TF.normalize(TF.to_tensor(im.resize((400,400),Image.Resampling.BILINEAR)),[.485,.456,.406],[.229,.224,.225])
-            p=self.fenify(x[None]).reshape(8,8,13).numpy()[::-1].copy()
-            if not np.allclose(p.sum(-1),1,atol=1e-4):p=torch.from_numpy(p).softmax(-1).numpy()
-            data[f'fenify_{rot}']=np.rot90(p,-rot).copy()
+            if 'fenify' in pending:
+                x=TF.normalize(TF.to_tensor(im.resize((400,400),Image.Resampling.BILINEAR)),[.485,.456,.406],[.229,.224,.225])
+                p=self.fenify(x[None]).reshape(8,8,13).numpy()[::-1].copy()
+                if not np.allclose(p.sum(-1),1,atol=1e-4):p=torch.from_numpy(p).softmax(-1).numpy()
+                record('fenify',rot,np.rot90(p,-rot).copy())
             # Release the full-resolution float tensor before transformer inference.
-            x=self.transform(torch.from_numpy(np.array(im)).permute(2,0,1).float())[None]
-            data[f'v4_{rot}']=self.v4(x).softmax(-1).reshape(8,8,13).numpy()
+            if 'v4' in pending or rot==0:
+                x=self.transform(torch.from_numpy(np.array(im)).permute(2,0,1).float())[None]
+            if 'v4' in pending:record('v4',rot,self.v4(x).softmax(-1).reshape(8,8,13).numpy())
             if rot==0:data['vitl_0']=self.vitl(x).softmax(-1).reshape(8,8,13).numpy()
         return data
 
