@@ -1,6 +1,7 @@
 # Hosted structured scanner — 2026-10-02
 
-Status: live on https://chess-scanner-app.vercel.app; production browser upload verified.
+Status: live on https://chess-scanner-app.vercel.app. The initial release is recorded
+below; the later simplification release is documented at the end.
 
 The runtime is isolated from benchmark references and provider credentials. The
 five model assets are pinned by SHA256 in `scanner_backend/models.json`. The
@@ -68,3 +69,36 @@ Production verification:
   ([saved response](tests/production-api.json)).
 - [Browser verification record](tests/production-browser.json).
 - No paid hosting plan or vision API service was added.
+
+## Conservative pruning release
+
+Runtime source: `a6e208e6edbd84c4f9c1e0172142e115366dab4e` (stage one: `98fe3a4`).
+Deployment: `dpl_HFTWFrwPQmHA1err7SYDAQVjqxeF`.
+Deployment URL: https://chess-scanner-1rzzqod3a-anonymousbazingas-projects.vercel.app
+
+Skipped unused fallback model views and piece detection, removed an unused
+rectified image, loaded ensemble models on demand, and stopped rotation searches
+only at the exact-zero lower bound. The three model architectures, geometry
+thresholds, fusion weights and chess constraints remain unchanged.
+
+- Stage one matched all response fields except elapsed time on 43/43 images.
+- Combined changes matched 67/67 full responses, including 24 newly reserved
+  distinct positions. Neural passes fell from 603 to 296 on this batch.
+- Whole-layer ablations caused new errors and were rejected.
+- 15 runtime tests and 8 historical regression tests passed.
+- Built with `--prod --skip-domain`, checked three paths on the deployment URL,
+  then promoted that same deployment to the production domains. The public URL
+  continued serving the prior revision until promotion.
+- Hosted fallback: 2.190 s inference; shortened rotation case: 22.384 s; full
+  nine-view case: 24.498 s. All three preserved FEN, photo-frame placement,
+  orientation and review squares relative to baseline inference on identical
+  upload bytes. These are three spot checks, not a hosted latency distribution.
+
+The public API also returned HTTP 200 for the fallback image after promotion,
+with the expected placement/review squares and the new runtime revision.
+
+[Pruning protocol and limitations](../benchmark/simplify/README.md),
+[per-board evidence](../benchmark/simplify/results.json), and
+[hosted verification](../benchmark/simplify/hosted.json). The reference labels
+remain incomplete for four diagnostic photos; both versions retain the same
+nine confirmed diagnostic errors and one error among the 24 reserved boards.

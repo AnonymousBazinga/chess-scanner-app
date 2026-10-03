@@ -3,7 +3,6 @@ Detector preprocessing adapted from Pbatch/CameraChessWeb (AGPL-3.0).
 """
 import cv2
 import numpy as np
-from PIL import Image
 from scipy.cluster.vq import kmeans2
 LABELS='bknpqrBKNPQR'
 
@@ -26,7 +25,7 @@ def detect(im,session):
         out.append({'box':box,'class_index':int(cls[i]),'confidence':float(conf[i])})
     return out
 
-def rectify(image, detections):
+def fit_grid(image, detections):
     points=np.float32([[(v['box'][0]+v['box'][2])/2,(v['box'][1]+v['box'][3])/2] for v in detections])
     if len(points)<35:raise ValueError('Not enough grid evidence')
     groups=[]
@@ -44,7 +43,4 @@ def rectify(image, detections):
     corners=cv2.perspectiveTransform(np.float32([[[0,0],[8,0],[8,8],[0,8]]]),hom)[0]
     area=abs(cv2.contourArea(corners));iw,ih=image.size
     if area<iw*ih*.08 or area>iw*ih*1.2:raise ValueError('Implausible board area')
-    # The manual-corner diagnostic is never imported or consulted here.
-    matrix=cv2.getPerspectiveTransform(corners,np.float32([[0,0],[800,0],[800,800],[0,800]]))
-    warped=Image.fromarray(cv2.warpPerspective(np.asarray(image),matrix,(800,800),borderMode=cv2.BORDER_REPLICATE))
-    return warped,{'corners':corners.tolist(),'inliers':int(mask.sum()),'detected_points':len(points),'median_reprojection_px':float(np.median(error)), 'max_reprojection_px':float(error.max())}
+    return {'corners':corners.tolist(),'inliers':int(mask.sum()),'detected_points':len(points),'median_reprojection_px':float(np.median(error)), 'max_reprojection_px':float(error.max())}

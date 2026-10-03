@@ -57,19 +57,21 @@ def geometric_score(prob,objects):
     value+=.15*sum(v!=0 and i not in covered for i,v in enumerate(b))
     return value
 
+def align_view(name,prob,objects):
+    """Return the first minimum-cost frame; all geometry costs are nonnegative."""
+    rotations=(0,) if name.startswith('fenify') else range(4)
+    aligned=[(geometric_score(np.rot90(prob,k),objects),k,np.rot90(prob,k).copy()) for k in rotations]
+    score,k,p=min(aligned,key=lambda v:v[0])
+    return {'name':name,'p':p,'geometry_cost':score,'align_ccw':k}
+
 def infer(posteriors,objects):
     if not objects:
         p=posteriors["v4_0"]
         try: b,meta=decode(p,lock_occupancy=2<=np.sum(p.argmax(-1)!=0)<=32)
         except ValueError: b,meta=decode(p,lock_occupancy=False)
         return b,{"fallback":"V4 + constraints; grid detector unavailable","orientation":"model inferred",**meta},p
-    candidates=[]
-    for name,p in posteriors.items():
-        # Fenify retains the input frame; ChessQueries may canonicalize it.
-        rotations=[0] if name.startswith('fenify') else range(4)
-        aligned=[(geometric_score(np.rot90(p,k),objects),k,np.rot90(p,k).copy()) for k in rotations]
-        score,k,aligned_p=min(aligned,key=lambda v:v[0])
-        candidates.append({'name':name,'p':aligned_p,'geometry_cost':score,'align_ccw':k})
+    # Fenify retains the input frame; ChessQueries may canonicalize it.
+    candidates=[align_view(name,p,objects) for name,p in posteriors.items()]
     # One view per architecture avoids counting correlated rotations as votes.
     selected=[]
     for group in ('fenify','v4','vitl'):

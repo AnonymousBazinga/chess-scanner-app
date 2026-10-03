@@ -1,0 +1,225 @@
+{
+  "deployment_id": "dpl_HFTWFrwPQmHA1err7SYDAQVjqxeF",
+  "runtime_commit": "a6e208e6edbd84c4f9c1e0172142e115366dab4e",
+  "staged_checks": [
+    {
+      "id": "IMG_6295",
+      "deployment": "https://chess-scanner-1rzzqod3a-anonymousbazingas-projects.vercel.app",
+      "http_status": 200,
+      "wall_seconds": 14.563,
+      "differences": [],
+      "result": {
+        "placement": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR",
+        "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w - - 0 1",
+        "seconds": 2.19,
+        "method": "structured-visual-v2",
+        "experimental": true,
+        "photo_placement": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR",
+        "canonical_rotation_ccw": 0,
+        "geometry": {
+          "status": "unavailable",
+          "reason": "Grid fit rejected"
+        },
+        "details": {
+          "fallback": "V4 + constraints; grid detector unavailable",
+          "orientation": "model inferred",
+          "objective": 0.0006463571088915677,
+          "correction_cost": 0.0,
+          "changed_indices": [],
+          "optimal": true
+        },
+        "review_squares": [],
+        "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+        "revision": "a6e208e6edbd84c4f9c1e0172142e115366dab4e"
+      }
+    },
+    {
+      "id": "photo4",
+      "deployment": "https://chess-scanner-1rzzqod3a-anonymousbazingas-projects.vercel.app",
+      "http_status": 200,
+      "wall_seconds": 25.873,
+      "differences": [],
+      "result": {
+        "placement": "r4rk1/p1q3p1/8/8/8/7P/1P4N1/2KR4",
+        "fen": "r4rk1/p1q3p1/8/8/8/7P/1P4N1/2KR4 w - - 0 1",
+        "seconds": 22.384,
+        "method": "structured-visual-v2",
+        "experimental": true,
+        "photo_placement": "5P2/kp4N1/r7/8/7R/1q5K/6P1/rp6",
+        "canonical_rotation_ccw": 270,
+        "geometry": {
+          "corners": [
+            [
+              194.99742126464844,
+              113.728271484375
+            ],
+            [
+              1065.0496826171875,
+              113.74260711669922
+            ],
+            [
+              1173.75048828125,
+              869.3637084960938
+            ],
+            [
+              123.49017333984375,
+              870.306640625
+            ]
+          ],
+          "inliers": 49,
+          "detected_points": 49,
+          "median_reprojection_px": 1.4910688400268555,
+          "max_reprojection_px": 5.641135215759277,
+          "status": "ok"
+        },
+        "details": {
+          "components": [
+            {
+              "name": "fenify_1",
+              "geometry_cost": 2.487451171875,
+              "align_ccw": 0,
+              "weight": 0.2183718613917307
+            },
+            {
+              "name": "v4_0",
+              "geometry_cost": 0.0,
+              "align_ccw": 1,
+              "weight": 0.7574253477683671
+            },
+            {
+              "name": "vitl_0",
+              "geometry_cost": 6.8869140625,
+              "align_ccw": 1,
+              "weight": 0.024202790839902077
+            }
+          ],
+          "constraint_rotation_ccw": 90,
+          "objective": 3.3955177559083283,
+          "correction_cost": 0.0,
+          "changed_indices": [],
+          "optimal": true,
+          "orientation": "photo; game-facing direction not determined"
+        },
+        "review_squares": [
+          "c7"
+        ],
+        "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+        "revision": "a6e208e6edbd84c4f9c1e0172142e115366dab4e"
+      }
+    },
+    {
+      "id": "photo7",
+      "deployment": "https://chess-scanner-1rzzqod3a-anonymousbazingas-projects.vercel.app",
+      "http_status": 200,
+      "wall_seconds": 27.834,
+      "differences": [],
+      "result": {
+        "placement": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR",
+        "fen": "rnbqk1nr/ppp2ppp/4p3/3p4/1b6/P7/1PPPPPPP/RNBQKBNR w - - 0 1",
+        "seconds": 24.498,
+        "method": "structured-visual-v2",
+        "experimental": true,
+        "photo_placement": "RNBKQBNR/PPPPPPP1/7P/6b1/4p3/3p4/ppp2ppp/rn1kqbnr",
+        "canonical_rotation_ccw": 180,
+        "geometry": {
+          "corners": [
+            [
+              339.81787109375,
+              74.76100158691406
+            ],
+            [
+              1026.978271484375,
+              77.58830261230469
+            ],
+            [
+              1045.6973876953125,
+              779.5477905273438
+            ],
+            [
+              321.64874267578125,
+              777.142578125
+            ]
+          ],
+          "inliers": 49,
+          "detected_points": 49,
+          "median_reprojection_px": 0.7668222784996033,
+          "max_reprojection_px": 1.989528775215149,
+          "status": "ok"
+        },
+        "details": {
+          "components": [
+            {
+              "name": "fenify_2",
+              "geometry_cost": 0.4722412109375,
+              "align_ccw": 0,
+              "weight": 0.35658410539028473
+            },
+            {
+              "name": "v4_0",
+              "geometry_cost": 0.3,
+              "align_ccw": 2,
+              "weight": 0.3886544856572716
+            },
+            {
+              "name": "vitl_0",
+              "geometry_cost": 1.1447265625,
+              "align_ccw": 2,
+              "weight": 0.25476140895244365
+            }
+          ],
+          "constraint_rotation_ccw": 0,
+          "objective": 5.429057802524379,
+          "correction_cost": 0.055736036893972773,
+          "changed_indices": [
+            0,
+            30
+          ],
+          "optimal": true,
+          "orientation": "photo; game-facing direction not determined"
+        },
+        "review_squares": [
+          "a8",
+          "b8",
+          "e8",
+          "b7",
+          "b4",
+          "c1",
+          "d1",
+          "e1",
+          "h1"
+        ],
+        "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+        "revision": "a6e208e6edbd84c4f9c1e0172142e115366dab4e"
+      }
+    }
+  ],
+  "production_url": "https://chess-scanner-app.vercel.app",
+  "production_check": {
+    "id": "IMG_6295",
+    "http_status": 200,
+    "result": {
+      "placement": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR",
+      "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w - - 0 1",
+      "seconds": 2.096,
+      "method": "structured-visual-v2",
+      "experimental": true,
+      "photo_placement": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR",
+      "canonical_rotation_ccw": 0,
+      "geometry": {
+        "status": "unavailable",
+        "reason": "Grid fit rejected"
+      },
+      "details": {
+        "fallback": "V4 + constraints; grid detector unavailable",
+        "orientation": "model inferred",
+        "objective": 0.0006463571088915677,
+        "correction_cost": 0.0,
+        "changed_indices": [],
+        "optimal": true
+      },
+      "review_squares": [],
+      "orientation_note": "Uses the selected ChessQ view orientation; confirm orientation in the editor. Side to move and castling rights cannot be recovered from a photo.",
+      "revision": "a6e208e6edbd84c4f9c1e0172142e115366dab4e"
+    }
+  }
+}
