@@ -3,13 +3,14 @@
 No references, example hashes, known positions or Gemini responses are read.
 Weights and upstream source locations are supplied as normal model dependencies.
 """
+from functools import cached_property
 from pathlib import Path
-import sys,time
+import time
 import cv2,numpy as np,onnxruntime as ort,torch
 from PIL import ImageOps
 from torchvision.transforms import functional as TF
 from .chess_constraints import infer,CHARS
-from .vision_geometry import detect,rectify,LABELS
+from .vision_geometry import detect,fit_grid,LABELS
 from .notation import placement
 
 def canonicalize(board,details):
@@ -22,16 +23,29 @@ def canonicalize(board,details):
 class StructuredRecognizer:
     def __init__(self, weights):
         torch.set_num_threads(1)
-        from .model import load_model, transform, memory_bounded_vitl
-        self.fenify = torch.jit.load(str(weights / 'fenify.pt'), map_location='cpu').eval()
+        from .model import load_model, transform
+        self.weights = weights = Path(weights)
         self.v4 = load_model(weights / 'cq-vit-s-644-v4-seed2-safetensors-fp16-r2.safetensors', torch.float32)
-        self.vitl = memory_bounded_vitl(weights / 'chessqueries-vitl-644-safetensors-fp16-r1.safetensors')
         self.transform = transform
         options = ort.SessionOptions(); options.intra_op_num_threads = 1
         self.detectors = [ort.InferenceSession(str(weights / n), sess_options=options, providers=['CPUExecutionProvider']) for n in ('480M_leyolo_pieces.onnx', '480L_leyolo_xcorners.onnx')]
 
+    @cached_property
+    def fenify(self):
+        return torch.jit.load(str(self.weights / 'fenify.pt'), map_location='cpu').eval()
+
+    @cached_property
+    def vitl(self):
+        from .model import memory_bounded_vitl
+        return memory_bounded_vitl(self.weights / 'chessqueries-vitl-644-safetensors-fp16-r1.safetensors')
+
     @torch.inference_mode()
-    def probabilities(self,image):
+    def probabilities(self,image,objects):
+        # The missing-geometry decoder consumes only this view. Do not load or
+        # run eight other views whose outputs it would discard.
+        if not objects:
+            x=self.transform(torch.from_numpy(np.array(image)).permute(2,0,1).float())[None]
+            return {'v4_0':self.v4(x).softmax(-1).reshape(8,8,13).numpy()}
         data={}
         for rot in range(4):
             im=image.rotate(90*rot,expand=True)
@@ -49,16 +63,19 @@ class StructuredRecognizer:
 
     def predict(self,image):
         start=time.monotonic();image=ImageOps.exif_transpose(image).convert('RGB')
-        pieces=detect(image,self.detectors[0]);corners=detect(image,self.detectors[1]);objects=[]
+        corners=detect(image,self.detectors[1]);objects=[]
         try:
-            _,geometry=rectify(image,corners);h=cv2.getPerspectiveTransform(np.float32(geometry['corners']),np.float32([[0,0],[8,0],[8,8],[0,8]]))
+            geometry=fit_grid(image,corners)
+        except ValueError as exc:geometry={'status':'unavailable','reason':str(exc)}
+        else:
+            pieces=detect(image,self.detectors[0])
+            h=cv2.getPerspectiveTransform(np.float32(geometry['corners']),np.float32([[0,0],[8,0],[8,8],[0,8]]))
             for o in pieces:
                 l,t,r,b=o['box'];base=[(l+r)/2,b-(r-l)/3]
                 x,y=np.floor(cv2.perspectiveTransform(np.float32([[base]]),h)[0,0]).astype(int)
                 if 0<=x<8 and 0<=y<8:objects.append({**o,'piece':LABELS[o['class_index']],'index':int(y*8+x)})
             geometry['status']='ok'
-        except ValueError as exc:geometry={'status':'unavailable','reason':str(exc)}
-        posteriors=self.probabilities(image);board,details,mix=infer(posteriors,objects)
+        posteriors=self.probabilities(image,objects);board,details,mix=infer(posteriors,objects)
         canonical,k=canonicalize(board,details);chars=np.array(list(CHARS));fen=placement(chars[canonical])
         # Agreement is a review signal, never a calibrated accuracy guarantee.
         probs=np.rot90(mix,k).reshape(64,13);ranks=np.sort(probs,axis=1)
