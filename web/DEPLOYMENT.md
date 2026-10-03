@@ -68,4 +68,3 @@ Production verification:
   ([saved response](tests/production-api.json)).
 - [Browser verification record](tests/production-browser.json).
 - No paid hosting plan or vision API service was added.
-
