@@ -1,0 +1,67 @@
+--- expected.json
+{
+  "physical_board.png": "r1b1k2r/p1q2p1p/1qnb2p1/1pnn2b1/1Q1N4/PP3N2/P1P1BPPP/R4R2 w - - 0 1"
+}
+
+--- summary.json
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "1CE1A334-F45C-4216-823B-EE5E6389838F",
+        "deviceName" : "iPhone Air",
+        "modelName" : "iPhone Air",
+        "osBuildNumber" : "23C54",
+        "osVersion" : "26.2",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 0,
+      "passedTests" : 4,
+      "skippedTests" : 2,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "ChessScanner · Built with macOS 15.7.9",
+  "expectedFailures" : 0,
+  "failedTests" : 0,
+  "finishTime" : 1790991853.524,
+  "passedTests" : 4,
+  "result" : "Passed",
+  "skippedTests" : 2,
+  "startTime" : 1790991405.73,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+
+  ],
+  "title" : "Test - ChessScanner",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 6
+}
+
+
+##### testGalleryPickerFlow
+
+##### testManualSetupEditingAndMoves
+
+##### testPromotion
+
+##### testScanPhysicalBoardToAnalysisAndHistory
+--- engine-lines.txt
+-M1, 1. Kxa8 Bb7#
+--- placement-diff.txt
+app:      r1b1k2r/p1q2p1p/1qnp2p1/1pnn2b1/1Q1N4/PP3N2/P1P1BPPP/R4R2
+expected: r1b1k2r/p1q2p1p/1qnb2p1/1pnn2b1/1Q1N4/PP3N2/P1P1BPPP/R4R2
+diff: ["d6: p vs b"]
+--- recognized-placement.txt
+r1b1k2r/p1q2p1p/1qnp2p1/1pnn2b1/1Q1N4/PP3N2/P1P1BPPP/R4R2
+
+--- xcodebuild errors/failures
